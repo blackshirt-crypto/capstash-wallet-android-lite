@@ -1,126 +1,118 @@
-# ☢ REMOTE NODE MODE — Setup Guide
-*Connect your phone wallet to your home node. No chain download. No heavy lifting.*
+# ☢ CapStash Wallet Lite
 
-Remote mode lets your phone talk to a CapStash node running on your home PC or server.
-Your phone is the remote control. Your PC does all the heavy work.
+**A lightweight Android wallet for the CapStash network.**
 
----
-
-## What You Need
-- A PC running the CapStash Qt wallet or daemon (Windows or Linux)
-- An Android phone with the CapStash Wallet Lite app installed
-- A free Tailscale account — https://tailscale.com
+CapStash Wallet Lite is a stripped-down, community-focused wallet — no miner, no block explorer, just the essentials: send, receive, check your balance, and monitor the network.
 
 ---
 
-## STEP 1 — Install Tailscale on Your PC
+## Features
 
-Tailscale creates a secure private tunnel between your phone and your PC.
-
-### Windows
-1. Go to https://tailscale.com/download and download the Windows installer
-2. Run the installer and sign in with a Google, Microsoft, or GitHub account
-3. Open Command Prompt and run:
-   ```
-   tailscale ip -4
-   ```
-4. Write down the 100.x.x.x address — you will need it later
-
-### Linux
-1. Run these commands:
-   ```
-   curl -fsSL https://tailscale.com/install.sh | sh
-   sudo tailscale up
-   ```
-2. Get your Tailscale IP:
-   ```
-   tailscale ip -4
-   ```
-3. Write down the 100.x.x.x address — you will need it later
+- **Send & Receive** — full transaction support with QR code scanning
+- **Balance & History** — view your wallet balance and transaction history
+- **Network Stats** — live hashrate, difficulty, and block height
+- **Two Node Modes** — run a local node on-device or connect to a remote node
+- **BIP39 Seed Phrase** — generate or restore a wallet from a 12-word seed phrase
+- **Tailscale Support** — securely connect to your home node over Tailscale VPN
 
 ---
 
-## STEP 2 — Install Tailscale on Your Phone
+## Node Modes
 
-1. Install Tailscale from the Google Play Store
-2. Sign in with the SAME account you used on your PC
-3. In the Tailscale app, confirm your PC shows as Connected
+### ⬡ LOCAL NODE
+Runs a full CapStash node (`capstashd`) directly on your Android device. Self-sovereign — no trust required. First sync downloads the full blockchain which takes time. Subsequent launches sync only new blocks.
+
+> ⚠️ Do not uninstall the app if you want to keep your synced chain data. Uninstalling wipes the blockchain and you start over from block 0.
+
+### ∿ REMOTE NODE
+Connects to an existing CapStash node running on your PC or server. Lightweight and instant — no chain download needed. Requires Tailscale or a reachable RPC endpoint.
+
+See [docs/Remote_Node_Setup.md](docs/Remote_Node_Setup.md) for full setup instructions.
 
 ---
 
-## STEP 3 — Configure Your CapStash Node
+## Getting Started
 
-You need to tell your node to accept RPC connections from your phone.
+### Install
+Download the latest APK from the [Releases](../../releases) page and install it on your Android device.
 
-### Find your config file
+> Enable "Install from unknown sources" in your Android settings if prompted.
 
-**Windows:**
-```
-C:\Users\YourName\AppData\Roaming\CapStash\CapStash.conf
-```
+### First Launch
+1. Choose **LOCAL NODE** or **REMOTE NODE**
+2. For LOCAL — generate a new seed phrase or restore an existing one
+3. For REMOTE — enter your node's IP, port, username, and password in Setup
 
-**Linux:**
-```
-~/.CapStash/CapStash.conf
-```
+---
 
-### Add these lines to your config file
+## Migrating from the Qt Wallet
 
-Open the file in any text editor and add the following.
-If some lines already exist, update them to match.
+If you already run a CapStash Qt wallet on your PC, the easiest path is **REMOTE NODE** mode — connect your phone directly to your existing node over Tailscale. No new wallet needed, your existing balance shows up immediately.
 
-```
-server=1
-rpcuser=yourusername
-rpcpassword=yourpassword
-rpcport=8332
-rpcallowip=127.0.0.1
-rpcallowip=100.64.0.0/10
-rpcbind=0.0.0.0
-listen=1
+See [docs/Remote_Node_Setup.md](docs/Remote_Node_Setup.md) for step-by-step instructions.
+
+> Note: Seed phrase restore from Qt wallet requires your Qt wallet to be a **legacy wallet** with a BIP39 mnemonic. Most Qt wallets use random key generation without a seed phrase — in that case, REMOTE mode is the recommended path.
+
+---
+
+## Building from Source
+
+### Requirements
+- Node.js 18+
+- React Native 0.73
+- Android SDK + NDK 26.1.10909125
+- Java 17
+
+### Build
+```bash
+# Install dependencies
+npm install
+
+# Bundle JS
+npx react-native bundle --platform android --dev false \
+  --entry-file index.js \
+  --bundle-output android/app/src/main/assets/index.android.bundle \
+  --assets-dest android/app/src/main/res
+
+# Build release APK
+cd android && ./gradlew assembleRelease
 ```
 
-> **IMPORTANT:** Replace `yourusername` and `yourpassword` with your own values.
-> Keep these private. Anyone with these credentials can access your wallet.
-
-### Restart your node
-
-Close and reopen the Qt wallet, or restart the daemon.
-The new settings will not take effect until you restart.
+APK output: `android/app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-## STEP 4 — Connect the Wallet App
+## Network Info
 
-1. Open the CapStash Wallet Lite app
-2. On the mode select screen, choose **∿ REMOTE NODE**
-3. Tap the ☢ icon in the top right corner to open Setup
-4. Tap **NODE CONNECTION** to expand it
-5. Fill in your details:
-   - **IP ADDRESS** — your PC Tailscale IP (100.x.x.x)
-   - **PORT** — 8332
-   - **USERNAME** — same as rpcuser in your config file
-   - **PASSWORD** — same as rpcpassword in your config file
-6. Tap **TEST CONNECTION**
-7. If it says CONNECTION OK — tap **SAVE CONFIG**
-8. Close setup. Your wallet will now show your balance and transaction history.
+| | |
+|---|---|
+| **Network** | CapStash Mainnet |
+| **Algorithm** | Whirlpool-512 XOR/256 |
+| **Block Time** | 60 seconds |
+| **Reward** | 1 CAP / block |
+| **Supply** | ~90 Billion CAP |
+| **RPC Port** | 8332 |
 
 ---
 
-## Troubleshooting
+## Docs
 
-**Connection failed or timeout:**
-- Make sure Tailscale is active on BOTH your phone and your PC
-- Confirm your node is running
-- Double check the IP address using: `tailscale ip -4`
-
-**Auth failed:**
-- Your username or password does not match the config file
-- Check for extra spaces before or after the values in the config
-
-**Node not responding after config change:**
-- You must fully restart your CapStash node after editing the config file
+- [Remote Node Setup](docs/Remote_Node_Setup.md) — connect to your home node via Tailscale
+- [Migrating from Qt Wallet](docs/Migrating_From_Qt_Wallet.md) — transfer your existing wallet
 
 ---
 
-Stack caps. Survive. ☢
+## Related Projects
+
+- [CapStash-Core](https://github.com/CapStash/CapStash-Core) — the full node daemon
+- [capstash-miner-android](https://github.com/scratcher14/capstash-miner-android) — standalone Android miner
+
+---
+
+## License
+
+See [LICENSE.txt](LICENSE.txt)
+
+---
+
+☢ Stack caps. Survive. ☢
