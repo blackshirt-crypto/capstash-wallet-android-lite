@@ -73,3 +73,14 @@ Yellowtail-Regular.ttf
 Yellowtail-Regular.ttf
 android/app/src/main/jniLibs/arm64-v8a/libcapstashd.so
 android/app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+
+# Build cache
+android/app/.cxx/
+
+# Release keystore — never commit this
+android/app/*.keystore
+android/app/*.jks
+
+# Build logs
+build.log
+android/app/src/main/assets/index.android.bundle

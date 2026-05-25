@@ -1,4 +1,4 @@
-package com.capstashwallet;
+package com.capstashwallet.lite;
 
 import android.content.Intent;
 import android.os.Build;

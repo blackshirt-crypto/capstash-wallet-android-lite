@@ -14,24 +14,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { listWallets, createWallet, getNewAddress, getWalletAddresses, importPrivKey } from './rpc';
 import { deriveWIFFromMnemonic, deriveLegacyAddressFromMnemonic } from './seedDerivation';
-import { WANDERER_NODE_CONFIG } from './appMode';
 
-const WANDERER_WALLET_INIT_KEY    = '@capstash_wanderer_wallet_init';
-const WANDERER_WALLET_ADDRESS_KEY = '@capstash_wanderer_wallet_address';
+const LOCAL_WALLET_INIT_KEY    = '@capstash_wanderer_wallet_init';
+const LOCAL_WALLET_ADDRESS_KEY = '@capstash_wanderer_wallet_address';
 
 /**
  * Ensure the "wanderer" named wallet exists on the local node.
  * Safe to call every time the app enters Wanderer mode — idempotent.
  *
- * @param {object} nodeConfig — should be WANDERER_NODE_CONFIG (127.0.0.1)
+ * @param {object} nodeConfig — local node config (127.0.0.1)
  * @returns {{ ready: boolean, address: string|null, error: string|null }}
  */
 export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
-  const cfg = nodeConfig || WANDERER_NODE_CONFIG;
+  const cfg = nodeConfig || { host: '127.0.0.1', port: 8332, user: 'capstash', pass: 'localnode' };
 
   try {
     // ── Step 1: Check persisted flag ────────────────────────
-    const initFlag = await AsyncStorage.getItem(WANDERER_WALLET_INIT_KEY);
+    const initFlag = await AsyncStorage.getItem(LOCAL_WALLET_INIT_KEY);
     if (initFlag === 'true') {
       // Wallet was created before — just load/refresh the address
       const address = await _loadOrFetchAddress(cfg);
@@ -54,7 +53,7 @@ export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
 
     if (Array.isArray(wallets) && wallets.includes('wanderer')) {
       // Already exists — mark flag and load address
-      await AsyncStorage.setItem(WANDERER_WALLET_INIT_KEY, 'true');
+      await AsyncStorage.setItem(LOCAL_WALLET_INIT_KEY, 'true');
       const address = await _loadOrFetchAddress(cfg);
       return { ready: true, address, error: null };
     }
@@ -81,7 +80,7 @@ export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
         // Use the address derived from the seed — not a fresh random address
         address = deriveLegacyAddressFromMnemonic(mnemonic);
         console.log('[walletManager] Derived legacy address:', address);
-        await AsyncStorage.setItem(WANDERER_WALLET_ADDRESS_KEY, address);
+        await AsyncStorage.setItem(LOCAL_WALLET_ADDRESS_KEY, address);
       } catch (e) {
         console.warn('[walletManager] importPrivKey failed:', e.message);
       }
@@ -92,14 +91,14 @@ export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
       try {
         address = await getNewAddress(wandererConfig);
         if (address) {
-          await AsyncStorage.setItem(WANDERER_WALLET_ADDRESS_KEY, address);
+          await AsyncStorage.setItem(LOCAL_WALLET_ADDRESS_KEY, address);
         }
       } catch (e) {
         console.warn('[walletManager] getNewAddress after createWallet failed:', e.message);
       }
     }
 
-    await AsyncStorage.setItem(WANDERER_WALLET_INIT_KEY, 'true');
+    await AsyncStorage.setItem(LOCAL_WALLET_INIT_KEY, 'true');
     console.log('[walletManager] Wanderer wallet ready, address:', address);
     return { ready: true, address, error: null };
 
@@ -119,8 +118,8 @@ export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
  */
 export async function clearWandererWalletFlag() {
   await AsyncStorage.multiRemove([
-    WANDERER_WALLET_INIT_KEY,
-    WANDERER_WALLET_ADDRESS_KEY,
+    LOCAL_WALLET_INIT_KEY,
+    LOCAL_WALLET_ADDRESS_KEY,
   ]);
 }
 
@@ -129,14 +128,14 @@ export async function clearWandererWalletFlag() {
  * Returns null if not yet initialized.
  */
 export async function getCachedWandererAddress() {
-  return AsyncStorage.getItem(WANDERER_WALLET_ADDRESS_KEY);
+  return AsyncStorage.getItem(LOCAL_WALLET_ADDRESS_KEY);
 }
 
 // ── Internal ───────────────────────────────────────────────
 
 async function _loadOrFetchAddress(nodeConfig) {
   // Try cached address first
-  const cached = await AsyncStorage.getItem(WANDERER_WALLET_ADDRESS_KEY);
+  const cached = await AsyncStorage.getItem(LOCAL_WALLET_ADDRESS_KEY);
   if (cached) return cached;
 
   // Fetch from node
@@ -146,13 +145,13 @@ async function _loadOrFetchAddress(nodeConfig) {
     const received = await getWalletAddresses(wandererConfig);
     if (Array.isArray(received) && received.length > 0) {
       const addr = received[0].address;
-      await AsyncStorage.setItem(WANDERER_WALLET_ADDRESS_KEY, addr);
+      await AsyncStorage.setItem(LOCAL_WALLET_ADDRESS_KEY, addr);
       return addr;
     }
     // No existing address — generate one
     const fresh = await getNewAddress(wandererConfig);
     if (fresh) {
-      await AsyncStorage.setItem(WANDERER_WALLET_ADDRESS_KEY, fresh);
+      await AsyncStorage.setItem(LOCAL_WALLET_ADDRESS_KEY, fresh);
     }
     return fresh;
   } catch (e) {

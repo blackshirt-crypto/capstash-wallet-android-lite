@@ -13,14 +13,14 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
-    namespace "com.capstashwallet"
+    namespace "com.capstashwallet.lite"
 
     defaultConfig {
-        applicationId "com.capstashwallet"
+        applicationId "com.capstashwallet.lite"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 42069
-        versionName "4.20.69"
+        versionName "4.20.69-lite"
     }
 
     signingConfigs {
@@ -48,15 +48,7 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
-
-    externalNativeBuild {
-        cmake {
-            path "src/main/cpp/CMakeLists.txt"
-            version "3.22.1"
-        }
-    }
 }
-
 dependencies {
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:flipper-integration")

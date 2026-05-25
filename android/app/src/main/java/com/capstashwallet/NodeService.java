@@ -1,4 +1,4 @@
-package com.capstashwallet;
+package com.capstashwallet.lite;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -13,6 +13,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import java.io.File;
+import com.capstashwallet.lite.MainActivity;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

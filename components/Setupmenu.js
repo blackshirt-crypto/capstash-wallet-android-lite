@@ -1,12 +1,12 @@
-// components/SetupMenu.js
-// CapStash — Node Configuration Modal
+// components/Setupmenu.js v1.0 — CapStash Wallet Lite
+// Node Configuration Modal
 //
 // Props:
 //   visible            {bool}
 //   onClose            {fn}
 //   isOnline           {bool}
 //   nodeConfig         {object}  — current config from App.js state
-//   appMode            {string}  — 'drifter' | 'wanderer' from App.js state
+//   appMode            {string}  — 'LOCAL' | 'REMOTE' from App.js state
 //   onNodeConfigChange {fn}      — App.js setNodeConfig
 //   onModeChange       {fn}      — App.js handleModeSelected
 
@@ -20,11 +20,14 @@ import {
   loadNodeConfig,
   testConnection,
 } from '../services/rpc';
-import { MODE_DRIFTER, MODE_WANDERER } from '../services/appMode';
-import Colors    from '../theme/colors';
+import Colors     from '../theme/colors';
 import Typography from '../theme/typography';
 
-const APP_VERSION = '4.20.69';
+const APP_VERSION = '1.0.0';
+
+// ── Mode constants (must match App.js) ────────────────────
+const MODE_LOCAL  = 'LOCAL';
+const MODE_REMOTE = 'REMOTE';
 
 export default function SetupMenu({
   visible,
@@ -37,7 +40,7 @@ export default function SetupMenu({
 }) {
   const [activeSection, setActiveSection] = useState('node');
 
-  // ── Four clean fields ──────────────────────────────────
+  // ── Remote node fields ────────────────────────────────
   const [ip,       setIp]       = useState('');
   const [port,     setPort]     = useState('8332');
   const [username, setUsername] = useState('');
@@ -46,15 +49,15 @@ export default function SetupMenu({
   const [showPort, setShowPort] = useState(false);
   const [showPass, setShowPass] = useState(false);
 
-  // ── Status ─────────────────────────────────────────────
+  // ── Status ────────────────────────────────────────────
   const [testStatus,  setTestStatus]  = useState(null);
   const [testMessage, setTestMessage] = useState('');
   const [saveStatus,  setSaveStatus]  = useState(null);
 
-  // ── Node config output (Wanderer) ──────────────────────
+  // ── Local node config output ──────────────────────────
   const [confOutput, setConfOutput] = useState('');
 
-  // ── Load existing config when menu opens ───────────────
+  // ── Load existing config when menu opens ──────────────
   useEffect(() => {
     if (!visible) return;
     loadNodeConfig().then(stored => {
@@ -62,8 +65,8 @@ export default function SetupMenu({
       if (cfg) {
         if (cfg.ip?.includes(':')) {
           const [rawIp, rawPort] = cfg.ip.split(':');
-          setIp(rawIp     || '');
-          setPort(rawPort  || '8332');
+          setIp(rawIp    || '');
+          setPort(rawPort || '8332');
         } else {
           setIp(cfg.ip    || '');
           setPort(cfg.port || '8332');
@@ -78,9 +81,8 @@ export default function SetupMenu({
     setConfOutput('');
   }, [visible]);
 
-  const statusColor  = isOnline ? Colors.green : Colors.red;
-  const currentMode  = (appMode || MODE_DRIFTER).toLowerCase();
-  const isWanderer   = currentMode === 'wanderer';
+  const statusColor = isOnline ? Colors.green : Colors.red;
+  const isLocal     = (appMode || MODE_REMOTE) === MODE_LOCAL;
 
   const buildConfig = () => ({
     ip:          ip.trim(),
@@ -91,7 +93,7 @@ export default function SetupMenu({
 
   const fieldsComplete = ip.trim() && port.trim() && username.trim() && password.trim();
 
-  // ── Test connection ────────────────────────────────────
+  // ── Test connection ───────────────────────────────────
   const handleTest = async () => {
     if (!fieldsComplete) {
       setTestStatus('fail');
@@ -118,7 +120,7 @@ export default function SetupMenu({
     }
   };
 
-  // ── Save config ────────────────────────────────────────
+  // ── Save config ───────────────────────────────────────
   const handleSave = async () => {
     if (!fieldsComplete) { setSaveStatus('error'); return; }
     setSaveStatus('saving');
@@ -133,7 +135,7 @@ export default function SetupMenu({
     }
   };
 
-  // ── Write node config file (Wanderer) ──────────────────
+  // ── Write local node config file ──────────────────────
   const handleWriteConfig = async () => {
     try {
       const { initWandererNode } = require('../services/nodeManager');
@@ -146,7 +148,7 @@ export default function SetupMenu({
     }
   };
 
-  // ── View node config file (Wanderer) ──────────────────
+  // ── View local node config file ───────────────────────
   const handleViewConfig = async () => {
     try {
       const RNFS = require('react-native-fs');
@@ -163,18 +165,18 @@ export default function SetupMenu({
     }
   };
 
-  // ── Switch mode ────────────────────────────────────────
+  // ── Switch mode ───────────────────────────────────────
   const handleSwitchMode = () => {
-    const targetMode = isWanderer ? MODE_DRIFTER : MODE_WANDERER;
-    const targetName = isWanderer ? 'DRIFTER' : 'WANDERER';
+    const targetMode = isLocal ? MODE_REMOTE : MODE_LOCAL;
+    const targetName = isLocal ? 'REMOTE'    : 'LOCAL';
     Alert.alert(
-      `SWITCH TO ${targetName}`,
-      isWanderer
-        ? 'Switching to Drifter mode will disconnect from the local node. Local chain data will be preserved.'
-        : 'Switching to Wanderer mode will run a full node on this device. First sync may take several minutes.',
+      `SWITCH TO ${targetName} NODE`,
+      isLocal
+        ? 'Switching to Remote mode will disconnect from the local node. Local chain data will be preserved.'
+        : 'Switching to Local mode will run a full CapStash node on this device. First sync may take several minutes.',
       [
         { text: 'CANCEL', style: 'cancel' },
-        { text: `ENTER ${targetName}`,
+        { text: `SWITCH TO ${targetName}`,
           onPress: () => { onModeChange?.(targetMode); onClose(); }
         },
       ]
@@ -221,12 +223,12 @@ export default function SetupMenu({
             <View style={{ flex: 1 }}>
               <Text style={styles.modeTag}>ACTIVE MODE</Text>
               <Text style={[styles.modeName, { color: statusColor, textShadowColor: statusColor }]}>
-                {currentMode.toUpperCase()}
+                {isLocal ? 'LOCAL' : 'REMOTE'}
               </Text>
               <Text style={styles.modeDesc}>
-                {isWanderer
-                  ? 'SELF-CONTAINED · LOCAL NODE · NO TAILSCALE'
-                  : 'REMOTE NODE · SYNCS VIA TAILSCALE OR LOCAL IP'}
+                {isLocal
+                  ? 'SELF-CONTAINED · LOCAL NODE · NO TAILSCALE NEEDED'
+                  : 'REMOTE NODE · CONNECTS VIA TAILSCALE OR LOCAL IP'}
               </Text>
             </View>
             <View style={styles.modeStatusBlock}>
@@ -236,25 +238,25 @@ export default function SetupMenu({
               </Text>
               <TouchableOpacity style={styles.switchModeBtn} onPress={handleSwitchMode}>
                 <Text style={styles.switchModeBtnText}>
-                  {isWanderer ? '→ DRIFTER' : '→ WANDERER'}
+                  {isLocal ? '→ REMOTE' : '→ LOCAL'}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* ── Wanderer Node Section ── */}
-          {isWanderer && (
-            <View style={styles.wandererCard}>
-              <Text style={styles.wandererTitle}>◈ LOCAL NODE STATUS</Text>
-              <Text style={styles.wandererDesc}>
+          {/* ── Local Node Status Card (LOCAL mode only) ── */}
+          {isLocal && (
+            <View style={styles.localCard}>
+              <Text style={styles.localCardTitle}>◈ LOCAL NODE STATUS</Text>
+              <Text style={styles.localCardDesc}>
                 {isOnline
-                  ? 'NODE RUNNING · CHAIN SYNCING'
+                  ? 'NODE RUNNING · CHAIN SYNCING OR SYNCED'
                   : 'NODE NOT STARTED · AWAITING CAPSTASHD'}
               </Text>
 
               <View style={styles.confDivider} />
 
-              <Text style={styles.wandererTitle}>◈ NODE CONFIG</Text>
+              <Text style={styles.localCardTitle}>◈ NODE CONFIG</Text>
 
               <View style={styles.confRow}>
                 <Text style={styles.confLabel}>DATA DIR</Text>
@@ -297,13 +299,12 @@ export default function SetupMenu({
           {activeSection === 'node' && (
             <View style={styles.sectionBody}>
 
-              {/* How-to — show Tailscale for Drifter, localhost note for Wanderer */}
               <View style={styles.howToBox}>
-                {isWanderer ? (
+                {isLocal ? (
                   <>
-                    <Text style={styles.howToTitle}>▸ WANDERER NODE RPC</Text>
+                    <Text style={styles.howToTitle}>▸ LOCAL NODE RPC</Text>
                     <Text style={styles.howToText}>
-                      IN WANDERER MODE THE NODE RUNS ON THIS DEVICE.{'\n'}
+                      IN LOCAL MODE THE NODE RUNS ON THIS DEVICE.{'\n'}
                       RPC CONNECTS TO 127.0.0.1:8332 AUTOMATICALLY.{'\n'}
                       NO MANUAL CONFIGURATION REQUIRED.{'\n\n'}
                       USE THE NODE CONFIG SECTION ABOVE TO WRITE{'\n'}
@@ -312,27 +313,27 @@ export default function SetupMenu({
                   </>
                 ) : (
                   <>
-                    <Text style={styles.howToTitle}>▸ TAILSCALE QUICK SETUP</Text>
+                    <Text style={styles.howToTitle}>▸ REMOTE NODE SETUP</Text>
                     <Text style={styles.howToText}>
                       {'1. '}INSTALL TAILSCALE ON YOUR PHONE + NODE PC{'\n'}
                       {'2. '}SIGN IN TO BOTH WITH THE SAME ACCOUNT{'\n'}
                       {'3. '}ON THE NODE PC, RUN:{'\n'}
                       {'     '}tailscale ip -4{'\n'}
-                      {'     '}→ YOU'LL GET A 100.x.x.x ADDRESS{'\n'}
+                      {'     '}→ YOU\'LL GET A 100.x.x.x ADDRESS{'\n'}
                       {'4. '}ADD TO YOUR CapStash.conf:{'\n'}
                       {'     '}server=1{'\n'}
                       {'     '}rpcbind=0.0.0.0{'\n'}
                       {'     '}rpcallowip=100.64.0.0/10{'\n'}
                       {'     '}rpcport=8332{'\n'}
-                      {'5. '}RESTART YOUR QT NODE{'\n'}
+                      {'5. '}RESTART YOUR NODE{'\n'}
                       {'6. '}ENTER THE 100.x.x.x ADDRESS BELOW + 8332 AS PORT
                     </Text>
                   </>
                 )}
               </View>
 
-              {/* Only show manual fields in Drifter mode */}
-              {!isWanderer && (
+              {/* Manual fields — Remote mode only */}
+              {!isLocal && (
                 <>
                   <Text style={styles.fieldLabel}>IP ADDRESS</Text>
                   <Text style={styles.fieldHint}>Your node's Tailscale IP — e.g. 100.64.0.1</Text>
@@ -345,7 +346,6 @@ export default function SetupMenu({
                       placeholderTextColor={Colors.greenDim}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      keyboardType={showIp ? "url" : "default"}
                       secureTextEntry={!showIp}
                     />
                     <TouchableOpacity style={styles.togglePassBtn} onPress={() => setShowIp(p => !p)}>
@@ -480,8 +480,6 @@ export default function SetupMenu({
               <View style={styles.comingSoonCard}>
                 <Text style={styles.comingSoonTitle}>⚠  COMING IN NEXT BUILD</Text>
                 {[
-                  'BIP39 SEED PHRASE GENERATION',
-                  'SEED PHRASE IMPORT',
                   'PIN / BIOMETRIC LOCK',
                   'ENCRYPTED KEY STORAGE',
                   'BACKUP & RESTORE',
@@ -491,9 +489,9 @@ export default function SetupMenu({
               </View>
               <View style={styles.infoBox}>
                 <Text style={styles.infoText}>
-                  {isWanderer
-                    ? '▸ WANDERER MODE USES LOCAL NODE KEYS\n▸ KEEP YOUR DEVICE SECURE\n▸ BACKUP YOUR WALLET DATA REGULARLY'
-                    : '▸ CURRENTLY USING KEYS FROM YOUR QT NODE\n▸ DO NOT SHARE YOUR RPC PASSWORD\n▸ TAILSCALE ENCRYPTS ALL RPC TRAFFIC IN TRANSIT'}
+                  {isLocal
+                    ? '▸ LOCAL MODE USES ON-DEVICE NODE KEYS\n▸ KEEP YOUR DEVICE SECURE\n▸ BACKUP YOUR WALLET DATA REGULARLY'
+                    : '▸ REMOTE MODE CONNECTS TO YOUR OWN NODE\n▸ DO NOT SHARE YOUR RPC PASSWORD\n▸ TAILSCALE ENCRYPTS ALL RPC TRAFFIC IN TRANSIT'}
                 </Text>
               </View>
             </View>
@@ -510,12 +508,11 @@ export default function SetupMenu({
           {activeSection === 'errors' && (
             <View style={styles.sectionBody}>
               {[
-                { code: 'ERR_01', title: 'NO NODE CONNECTION',  fix: isWanderer ? 'Local capstashd not running yet — awaiting daemon compile' : 'Check Tailscale is active on both devices and the Qt node is running' },
-                { code: 'ERR_02', title: 'NODE NOT SYNCED',     fix: 'Wait for chain sync to complete before mining or exploring' },
-                { code: 'ERR_03', title: 'NO BLOCK TEMPLATE',   fix: 'Node must be fully synced to serve block templates for mining' },
-                { code: 'ERR_04', title: 'CONFIG INCOMPLETE',   fix: 'Open Setup Menu and fill in all four node config fields' },
-                { code: 'ERR_05', title: 'RPC AUTH FAILED',     fix: 'Username or password does not match your CapStash.conf — check both' },
-                { code: 'ERR_06', title: 'RPC TIMEOUT',         fix: isWanderer ? 'Local node not responding — capstashd may not be running' : 'Tailscale not active, node offline, or wrong IP/port' },
+                { code: 'ERR_01', title: 'NO NODE CONNECTION',  fix: isLocal ? 'Local capstashd not running yet — node is still starting up' : 'Check Tailscale is active on both devices and your node is running' },
+                { code: 'ERR_02', title: 'NODE NOT SYNCED',     fix: 'Wait for chain sync to complete' },
+                { code: 'ERR_04', title: 'CONFIG INCOMPLETE',   fix: 'Open Setup and fill in all four remote node fields' },
+                { code: 'ERR_05', title: 'RPC AUTH FAILED',     fix: 'Username or password does not match your CapStash.conf' },
+                { code: 'ERR_06', title: 'RPC TIMEOUT',         fix: isLocal ? 'Local node not responding — capstashd may still be starting' : 'Tailscale not active, node offline, or wrong IP/port' },
               ].map(e => (
                 <View key={e.code} style={styles.errorRow}>
                   <View style={styles.errorTop}>
@@ -539,9 +536,9 @@ export default function SetupMenu({
           {activeSection === 'info' && (
             <View style={styles.sectionBody}>
               {[
-                ['APP',     'CAPSTASH WALLET'],
+                ['APP',     'CAPSTASH WALLET LITE'],
                 ['VERSION', APP_VERSION],
-                ['MODE',    currentMode.toUpperCase()],
+                ['MODE',    isLocal ? 'LOCAL NODE' : 'REMOTE NODE'],
                 ['NETWORK', 'CAPSTASH MAINNET'],
                 ['POW',     'WHIRLPOOL-512 XOR/256'],
                 ['REWARD',  '1 CAP / BLOCK'],
@@ -566,7 +563,7 @@ export default function SetupMenu({
   );
 }
 
-// ── Section Header ─────────────────────────────────────────
+// ── Section Header ────────────────────────────────────────
 function SectionHeader({ label, open, onPress }) {
   return (
     <TouchableOpacity style={styles.sectionHeaderRow} onPress={onPress}>
@@ -576,9 +573,9 @@ function SectionHeader({ label, open, onPress }) {
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:            { flex: 1, backgroundColor: Colors.black },
+  root:   { flex: 1, backgroundColor: Colors.black },
   header: {
     flexDirection:     'row',
     justifyContent:    'space-between',
@@ -615,7 +612,9 @@ const styles = StyleSheet.create({
     color:         Colors.greenDim,
     letterSpacing: 1,
   },
-  scroll:          { flex: 1, padding: 14 },
+  scroll: { flex: 1, padding: 14 },
+
+  // ── Mode banner ──
   modeBanner: {
     flexDirection:   'row',
     justifyContent:  'space-between',
@@ -642,19 +641,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop:     2,
   },
-  modeStatusBlock: {
-    alignItems: 'center',
-    gap:        6,
-  },
-  statusDot: {
-    width:        12,
-    height:       12,
-    borderRadius: 6,
-  },
-  statusLabel: {
-    ...Typography.micro,
-    letterSpacing: 1,
-  },
+  modeStatusBlock: { alignItems: 'center', gap: 6 },
+  statusDot:       { width: 12, height: 12, borderRadius: 6 },
+  statusLabel:     { ...Typography.micro, letterSpacing: 1 },
   switchModeBtn: {
     borderWidth:       1,
     borderColor:       Colors.borderDim,
@@ -667,7 +656,9 @@ const styles = StyleSheet.create({
     color:         Colors.greenDim,
     letterSpacing: 1,
   },
-  wandererCard: {
+
+  // ── Local node card ──
+  localCard: {
     borderWidth:     1,
     borderColor:     Colors.amberDim,
     borderStyle:     'dashed',
@@ -675,16 +666,16 @@ const styles = StyleSheet.create({
     padding:         12,
     marginBottom:    10,
   },
-  wandererTitle: {
+  localCardTitle: {
     ...Typography.labelSmall,
     color:         Colors.amberDim,
     letterSpacing: 1,
     marginBottom:  4,
   },
-  wandererDesc: {
+  localCardDesc: {
     ...Typography.micro,
-    color:      Colors.amberDim,
-    lineHeight: 15,
+    color:        Colors.amberDim,
+    lineHeight:   15,
     marginBottom: 4,
   },
   confDivider: {
@@ -694,10 +685,10 @@ const styles = StyleSheet.create({
     marginVertical:  10,
   },
   confRow: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
-    marginBottom:    5,
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'center',
+    marginBottom:   5,
   },
   confLabel: {
     ...Typography.micro,
@@ -733,12 +724,14 @@ const styles = StyleSheet.create({
   },
   confOutput: {
     ...Typography.micro,
-    color:       Colors.greenDim,
-    marginTop:   8,
-    lineHeight:  16,
+    color:         Colors.greenDim,
+    marginTop:     8,
+    lineHeight:    16,
     letterSpacing: 0.5,
-    fontFamily:  'ShareTechMono',
+    fontFamily:    'ShareTechMono',
   },
+
+  // ── Section chrome ──
   divider: {
     height:          1,
     backgroundColor: Colors.border,
@@ -756,11 +749,10 @@ const styles = StyleSheet.create({
     color:         Colors.greenDim,
     letterSpacing: 2,
   },
-  sectionArrow: {
-    ...Typography.small,
-    color: Colors.greenDim,
-  },
-  sectionBody:     { paddingBottom: 12 },
+  sectionArrow: { ...Typography.small, color: Colors.greenDim },
+  sectionBody:  { paddingBottom: 12 },
+
+  // ── How-to box ──
   howToBox: {
     borderWidth:     1,
     borderColor:     Colors.border,
@@ -779,6 +771,8 @@ const styles = StyleSheet.create({
     color:      Colors.greenDim,
     lineHeight: 17,
   },
+
+  // ── Input fields ──
   fieldLabel: {
     ...Typography.micro,
     color:         Colors.green,
@@ -792,7 +786,7 @@ const styles = StyleSheet.create({
     marginBottom:  5,
     fontSize:      9,
   },
-  fieldSpacing:    { marginTop: 14 },
+  fieldSpacing: { marginTop: 14 },
   input: {
     backgroundColor: Colors.black,
     borderWidth:     1,
@@ -803,12 +797,8 @@ const styles = StyleSheet.create({
     padding:         10,
     letterSpacing:   1,
   },
-  passwordRow: {
-    flexDirection: 'row',
-    alignItems:    'stretch',
-    gap:           6,
-  },
-  passwordInput:   { flex: 1 },
+  passwordRow:    { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
+  passwordInput:  { flex: 1 },
   togglePassBtn: {
     borderWidth:       1,
     borderColor:       Colors.borderDim,
@@ -820,6 +810,8 @@ const styles = StyleSheet.create({
     color:         Colors.greenDim,
     letterSpacing: 1,
   },
+
+  // ── Test / Save buttons ──
   testBtn: {
     marginTop:      14,
     borderWidth:    1,
@@ -829,8 +821,8 @@ const styles = StyleSheet.create({
     minHeight:      40,
     justifyContent: 'center',
   },
-  testBtnOk:       { borderColor: Colors.green },
-  testBtnFail:     { borderColor: Colors.red   },
+  testBtnOk:   { borderColor: Colors.green },
+  testBtnFail: { borderColor: Colors.red   },
   testBtnText: {
     ...Typography.labelSmall,
     color:         Colors.amber,
@@ -852,8 +844,8 @@ const styles = StyleSheet.create({
     minHeight:      40,
     justifyContent: 'center',
   },
-  saveBtnOk:       { backgroundColor: Colors.greenDark, borderColor: Colors.green },
-  saveBtnFail:     { borderColor: Colors.red },
+  saveBtnOk:   { backgroundColor: Colors.greenDark, borderColor: Colors.green },
+  saveBtnFail: { borderColor: Colors.red },
   saveBtnText: {
     ...Typography.labelSmall,
     color:         Colors.green,
@@ -866,6 +858,8 @@ const styles = StyleSheet.create({
     lineHeight:    16,
     letterSpacing: 0.5,
   },
+
+  // ── Info / security boxes ──
   infoBox: {
     borderWidth:     1,
     borderColor:     Colors.border,
@@ -896,6 +890,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom:  5,
   },
+
+  // ── Error reference ──
   errorRow: {
     borderWidth:     1,
     borderColor:     Colors.border,
@@ -909,21 +905,11 @@ const styles = StyleSheet.create({
     gap:           10,
     marginBottom:  4,
   },
-  errorCode: {
-    ...Typography.labelSmall,
-    color:         Colors.amber,
-    letterSpacing: 2,
-  },
-  errorTitle: {
-    ...Typography.small,
-    color:         Colors.green,
-    letterSpacing: 1,
-  },
-  errorFix: {
-    ...Typography.micro,
-    color:      Colors.greenDim,
-    lineHeight: 14,
-  },
+  errorCode:  { ...Typography.labelSmall, color: Colors.amber,    letterSpacing: 2 },
+  errorTitle: { ...Typography.small,      color: Colors.green,    letterSpacing: 1 },
+  errorFix:   { ...Typography.micro,      color: Colors.greenDim, lineHeight: 14   },
+
+  // ── App info rows ──
   infoRow: {
     flexDirection:   'row',
     justifyContent:  'space-between',
@@ -934,14 +920,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     marginBottom:    3,
   },
-  infoLabel: {
-    ...Typography.tiny,
-    color:         Colors.greenDim,
-    letterSpacing: 1,
-  },
-  infoValue: {
-    ...Typography.small,
-    color:         Colors.green,
-    letterSpacing: 1,
-  },
+  infoLabel: { ...Typography.tiny,  color: Colors.greenDim, letterSpacing: 1 },
+  infoValue: { ...Typography.small, color: Colors.green,    letterSpacing: 1 },
 });

@@ -43,7 +43,7 @@ export default function SeedRestoreScreen({ onSeedRestored, onBack }) {
 
     Alert.alert(
       '⚠ RESTORE WALLET',
-      'This will restore your Wanderer wallet from your seed phrase.\n\nMake sure you are on a trusted device.',
+      'This will restore your CapStash wallet from your seed phrase.\n\nMake sure you are on a trusted device.',
       [
         { text: 'CANCEL', style: 'cancel' },
         { text: 'RESTORE', onPress: () => onSeedRestored(mnemonic) },
@@ -57,7 +57,7 @@ export default function SeedRestoreScreen({ onSeedRestored, onBack }) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>☢ WANDERER RESTORE</Text>
+      <Text style={styles.title}>☢ RESTORE WALLET</Text>
       <Text style={styles.subtitle}>ENTER YOUR 12-WORD SEED PHRASE</Text>
 
       <View style={styles.divider} />

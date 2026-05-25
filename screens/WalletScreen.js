@@ -4,7 +4,7 @@
 // Props:
 //   nodeConfig      {object}  — current RPC config (wandererMode: true if Wanderer)
 //   isOnline        {bool}
-//   appMode         {string}  — 'drifter' | 'wanderer'
+//   appMode         {string}  — 'LOCAL' | 'REMOTE'
 //   walletReady     {bool}    — false until Wanderer wallet is confirmed
 //   wandererAddress {string}  — pre-loaded Wanderer wallet address from App.js
 
@@ -18,7 +18,7 @@ import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from 're
 import QRCode from 'react-native-qrcode-svg';
 import TierName  from '../components/TierName';
 import { getBalances, listTransactions, getWalletAddresses, sendToAddress } from '../services/rpc';
-import { MODE_WANDERER } from '../services/appMode';
+const MODE_LOCAL = 'LOCAL';
 import Colors    from '../theme/colors';
 import Typography from '../theme/typography';
 
@@ -26,7 +26,7 @@ const TX_INITIAL = 5;
 const TX_FULL    = 20;
 
 export default function WalletScreen({ nodeConfig, isOnline, appMode, walletReady, wandererAddress }) {
-  const isWanderer = appMode === MODE_WANDERER;
+  const isWanderer = appMode === MODE_LOCAL;
 
   const [balance,      setBalance]      = useState(null);
   const [txs,          setTxs]          = useState([]);
@@ -93,7 +93,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
       } else if (isWanderer && wandererAddress) {
         // Wanderer wallet exists but no received txs yet — use the known address
         setMyAddress(wandererAddress);
-        setAllAddresses([{ address: wandererAddress, label: 'WANDERER' }]);
+        setAllAddresses([{ address: wandererAddress, label: 'LOCAL' }]);
       }
     } catch (e) {
       console.warn('WalletScreen load error:', e);
@@ -216,7 +216,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
         {/* ── Mode badge (Wanderer only) ── */}
         {isWanderer && (
           <View style={styles.modeBadge}>
-            <Text style={styles.modeBadgeText}>◈ LOCAL WALLET · WANDERER MODE</Text>
+            <Text style={styles.modeBadgeText}>◈ LOCAL WALLET · LOCAL MODE</Text>
           </View>
         )}
 

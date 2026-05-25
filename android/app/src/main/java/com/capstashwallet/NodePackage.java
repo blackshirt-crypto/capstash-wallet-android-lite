@@ -1,4 +1,4 @@
-package com.capstashwallet;
+package com.capstashwallet.lite;
 
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;

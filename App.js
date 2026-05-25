@@ -1,5 +1,4 @@
-// App.js v2.5
-// CapStash Wallet — Wallet of the Wasteland
+// App.js v1.0 — CapStash Wallet Lite
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
@@ -8,29 +7,39 @@ import {
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import WalletScreen     from './screens/WalletScreen';
-import MinerScreen      from './screens/MinerScreen';
-import ExplorerScreen   from './screens/ExplorerScreen';
-import NetworkScreen    from './screens/NetworkScreen';
-import SoloScreen       from './screens/SoloScreen';
-import ModeSelectScreen    from './screens/ModeSelectScreen';
-import SeedGenerateScreen  from './screens/SeedGenerateScreen';
-import SeedVerifyScreen    from './screens/SeedVerifyScreen';
-import SeedRestoreScreen   from './screens/SeedRestoreScreen';
-import FieldManual      from './components/FieldManual';
-import SetupMenu        from './components/Setupmenu';
-import { getBlockCount, getMiningInfo, getBlockchainInfo, loadNodeConfig } from './services/rpc';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  setAppMode as persistMode, clearAppMode, loadAppMode,
-  MODE_WANDERER, MODE_DRIFTER, WANDERER_NODE_CONFIG,
-} from './services/appMode';
+
+import WalletScreen       from './screens/WalletScreen';
+import NetworkScreen      from './screens/NetworkScreen';
+import SeedGenerateScreen from './screens/SeedGenerateScreen';
+import SeedVerifyScreen   from './screens/SeedVerifyScreen';
+import SeedRestoreScreen  from './screens/SeedRestoreScreen';
+import FieldManual        from './components/FieldManual';
+import SetupMenu          from './components/Setupmenu';
+
+import { getBlockCount, getMiningInfo, getBlockchainInfo, loadNodeConfig } from './services/rpc';
 import { ensureWandererWallet } from './services/walletManager';
 import { startNode } from './services/nodeService';
 import Colors from './theme/colors';
 
-const Tab = createBottomTabNavigator();
+// ── App modes ─────────────────────────────────────────────
+const MODE_LOCAL  = 'LOCAL';   // bundles local capstashd node
+const MODE_REMOTE = 'REMOTE';  // connects to remote/community node via Tailscale
 
+// ── Local node config (same as old WANDERER_NODE_CONFIG) ──
+const LOCAL_NODE_CONFIG = {
+  host: '127.0.0.1',
+  port: 8332,
+  user: 'capstash',
+  pass: 'localnode',
+};
+
+// ── AsyncStorage helpers ──────────────────────────────────
+const persistMode  = async (m) => AsyncStorage.setItem('@capstash_app_mode', m);
+const clearAppMode = async ()  => AsyncStorage.removeItem('@capstash_app_mode');
+const loadAppMode  = async ()  => AsyncStorage.getItem('@capstash_app_mode');
+
+// ── Default remote node placeholder ──────────────────────
 const DEFAULT_NODE = {
   ip:          '100.x.x.x',
   port:        '8332',
@@ -38,15 +47,13 @@ const DEFAULT_NODE = {
   rpcpassword: 'wasteland',
 };
 
-// ── Node sync status for header indicator ─────────────────
-// RED   = node not running / no connection
+// ── Node sync status for header ☢ indicator ──────────────
+// RED   = no connection / node not running
 // AMBER = connected but still syncing (verificationprogress < 0.95)
 // GREEN = fully synced (verificationprogress >= 0.95)
-const NODE_STATUS = {
-  RED:   'red',
-  AMBER: 'amber',
-  GREEN: 'green',
-};
+const NODE_STATUS = { RED: 'red', AMBER: 'amber', GREEN: 'green' };
+
+const Tab = createBottomTabNavigator();
 
 export default function App() {
   const [blockHeight, setBlockHeight] = useState(0);
@@ -56,36 +63,33 @@ export default function App() {
   const [showManual,  setShowManual]  = useState(false);
   const [showSetup,   setShowSetup]   = useState(false);
   const [nodeConfig,  setNodeConfig]  = useState(DEFAULT_NODE);
-  const [appMode,     setAppMode]     = useState(null);
+  const [appMode,     setAppMode]     = useState(null);   // null = not yet chosen
   const [configReady, setConfigReady] = useState(false);
-  const [seedPhase,   setSeedPhase]   = useState(null);
+  const [seedPhase,   setSeedPhase]   = useState(null);   // null | 'generate' | 'verify' | 'restore'
   const [pendingSeed, setPendingSeed] = useState(null);
 
-  // ── Wanderer wallet state ──────────────────────────────
+  // ── Local node wallet state ───────────────────────────
   const [walletAddress, setWalletAddress] = useState(null);
   const [walletReady,   setWalletReady]   = useState(false);
 
-  // ── Node sync status — drives ☢ icon color ────────────
+  // ── Node sync status — drives ☢ icon color ───────────
   const [nodeStatus, setNodeStatus] = useState(NODE_STATUS.RED);
 
   const tickerAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Load persisted app mode on boot ───────────────────
+  // ── Load persisted app mode on boot ──────────────────
   useEffect(() => {
     loadAppMode().then(m => {
       console.log('[App] loadAppMode returned:', JSON.stringify(m));
-      if (!m) { setAppMode(null); return; }
-      if (m === 'connected' || m === 'standalone') {
-        clearAppMode().then(() => setAppMode(null));
-        return;
-      }
-      if (m === MODE_DRIFTER)  { setAppMode(MODE_DRIFTER);  return; }
-      if (m === MODE_WANDERER) { setAppMode(MODE_WANDERER); return; }
+      if (m === MODE_LOCAL)  { setAppMode(MODE_LOCAL);  return; }
+      if (m === MODE_REMOTE) { setAppMode(MODE_REMOTE); return; }
+      // Clear any legacy Wanderer/Drifter values from old wallet-android installs
+      if (m) clearAppMode();
       setAppMode(null);
     });
   }, []);
 
-  // ── Load persisted node config on boot ────────────────
+  // ── Load persisted remote node config on boot ────────
   useEffect(() => {
     loadNodeConfig().then(cfg => {
       if (cfg && typeof cfg === 'object') setNodeConfig(cfg);
@@ -94,85 +98,80 @@ export default function App() {
     });
   }, []);
 
-  // ── Wanderer mode — override nodeConfig to localhost ──
+  // ── Local mode — force nodeConfig to localhost ───────
   useEffect(() => {
-    if (!appMode) return;
-    if (appMode === MODE_WANDERER) {
-      setNodeConfig({
-        ip:           WANDERER_NODE_CONFIG.host,
-        port:         String(WANDERER_NODE_CONFIG.port),
-        rpcuser:      WANDERER_NODE_CONFIG.user,
-        rpcpassword:  WANDERER_NODE_CONFIG.pass,
-        wandererMode: true,
-      });
-    }
+    if (appMode !== MODE_LOCAL) return;
+    setNodeConfig({
+      ip:          LOCAL_NODE_CONFIG.host,
+      port:        String(LOCAL_NODE_CONFIG.port),
+      rpcuser:     LOCAL_NODE_CONFIG.user,
+      rpcpassword: LOCAL_NODE_CONFIG.pass,
+      localMode:   true,
+    });
   }, [appMode]);
 
-  // ── Wanderer boot — start node then init wallet ────────
-  // Does NOT block the UI. Wallet screen loads immediately.
-  // ensureWandererWallet runs after a 5s delay to give capstashd time to start.
+  // ── Local mode boot — start node then init wallet ────
+  // UI loads immediately. Node starts in background.
+  // ensureWandererWallet called after 5s delay for capstashd startup.
   useEffect(() => {
-    if (appMode !== MODE_WANDERER || !configReady || seedPhase !== null) return;
+    if (appMode !== MODE_LOCAL || !configReady || seedPhase !== null) return;
 
-    const wandererCfg = {
-      ip:           WANDERER_NODE_CONFIG.host,
-      port:         String(WANDERER_NODE_CONFIG.port),
-      rpcuser:      WANDERER_NODE_CONFIG.user,
-      rpcpassword:  WANDERER_NODE_CONFIG.pass,
-      wandererMode: true,
+    const localCfg = {
+      ip:          LOCAL_NODE_CONFIG.host,
+      port:        String(LOCAL_NODE_CONFIG.port),
+      rpcuser:     LOCAL_NODE_CONFIG.user,
+      rpcpassword: LOCAL_NODE_CONFIG.pass,
+      localMode:   true,
     };
 
-    console.log('[App] Wanderer boot — starting node...');
+    console.log('[App] Local mode boot — starting node...');
 
-    // Start capstashd, wait 5s, then attempt wallet init
     startNode()
       .catch(e => console.warn('[App] startNode error:', e.message))
       .then(() => new Promise(resolve => setTimeout(resolve, 5000)))
-      .then(() => ensureWandererWallet(wandererCfg, pendingSeed))
+      .then(() => ensureWandererWallet(localCfg, pendingSeed))
       .then(result => {
         console.log('[App] ensureWandererWallet result:', JSON.stringify(result));
         if (result.ready) {
           setWalletAddress(result.address);
           setWalletReady(true);
         } else {
-          // Wallet init failed — not fatal, user can still see the screen.
-          // Node status indicator will show RED until node comes up.
+          // Not fatal — node status indicator will show RED until node comes up
           console.warn('[App] Wallet init failed:', result.error);
         }
       })
-      .catch(e => console.error('[App] Wanderer boot error:', e.message));
+      .catch(e => console.error('[App] Local boot error:', e.message));
 
   }, [appMode, configReady, seedPhase, pendingSeed]);
 
-  // ── Handle mode selection ──────────────────────────────
+  // ── Handle mode selection ───────────────────────────
   const handleModeSelected = async (mode) => {
-    if (mode === MODE_WANDERER) {
-      // Check if wanderer wallet was already created before
+    if (mode === MODE_LOCAL) {
+      // Check if local wallet was already created
       const alreadyInit = await AsyncStorage.getItem('@capstash_wanderer_wallet_init');
       if (alreadyInit === 'true') {
-        // Wallet exists — skip seed flow, go straight to main app
-        await persistMode(MODE_WANDERER);
-        setAppMode(MODE_WANDERER);
+        // Wallet exists — skip seed flow
+        await persistMode(MODE_LOCAL);
+        setAppMode(MODE_LOCAL);
         return;
       }
-      // First time Wanderer — go through seed phrase flow before booting
-      setSeedPhase('generate');
-      setAppMode(MODE_WANDERER);
+      // First time — ask create or restore
+      setSeedPhase('choice');
+      setAppMode(MODE_LOCAL);
       return;
     }
+    // Remote mode
     await persistMode(mode);
-    if (mode === MODE_DRIFTER) {
-      setWalletAddress(null);
-      setWalletReady(false);
-      setNodeStatus(NODE_STATUS.RED);
-      const cfg = await loadNodeConfig();
-      if (cfg && !cfg.wandererMode) setNodeConfig(cfg);
-      else setNodeConfig(DEFAULT_NODE);
-    }
+    setWalletAddress(null);
+    setWalletReady(false);
+    setNodeStatus(NODE_STATUS.RED);
+    const cfg = await loadNodeConfig();
+    if (cfg && !cfg.localMode) setNodeConfig(cfg);
+    else setNodeConfig(DEFAULT_NODE);
     setAppMode(mode);
   };
 
-  // ── Poll node stats ────────────────────────────────────
+  // ── Poll node stats every 30s ─────────────────────────
   useEffect(() => {
     if (!configReady || !nodeConfig || !appMode) return;
 
@@ -187,22 +186,17 @@ export default function App() {
         setNetworkHash(mining?.networkhashps || 0);
         setIsOnline(true);
 
-        // ── Wanderer: also check sync progress for status dot ──
-        if (appMode === MODE_WANDERER) {
+        // Local mode: also check sync progress for status dot
+        if (appMode === MODE_LOCAL) {
           try {
             const chainInfo = await getBlockchainInfo(nodeConfig);
             const progress = chainInfo?.verificationprogress || 0;
-            if (progress >= 0.95) {
-              setNodeStatus(NODE_STATUS.GREEN);
-            } else {
-              setNodeStatus(NODE_STATUS.AMBER);
-            }
+            setNodeStatus(progress >= 0.95 ? NODE_STATUS.GREEN : NODE_STATUS.AMBER);
           } catch {
-            // getblockchaininfo failed — node up but chain info unavailable
             setNodeStatus(NODE_STATUS.AMBER);
           }
         } else {
-          // Drifter — online = green
+          // Remote mode — if we got a response, we're connected
           setNodeStatus(NODE_STATUS.GREEN);
         }
 
@@ -217,7 +211,7 @@ export default function App() {
     return () => clearInterval(id);
   }, [nodeConfig, configReady, appMode]);
 
-  // ── Formatters ─────────────────────────────────────────
+  // ── Formatters ────────────────────────────────────────
   const formatHash = (hs) => {
     if (!hs || hs === 0) return '-- H/s';
     if (hs >= 1e9) return `${(hs / 1e9).toFixed(2)} GH/s`;
@@ -234,7 +228,7 @@ export default function App() {
     return d.toFixed(3);
   };
 
-  // ── Node status dot color ──────────────────────────────
+  // ── Status dot color ──────────────────────────────────
   const statusColor =
     nodeStatus === NODE_STATUS.GREEN ? Colors.green :
     nodeStatus === NODE_STATUS.AMBER ? Colors.amber :
@@ -253,18 +247,91 @@ export default function App() {
     }).start();
   }, [networkHash, difficulty, blockHeight]);
 
-  // ── Mode not yet chosen ────────────────────────────────
+  // ── Mode not yet chosen — show mode select screen ────
   if (configReady && appMode === null) {
     return (
       <SafeAreaProvider>
-        <NavigationContainer>
-          <StatusBar barStyle="dark-content" backgroundColor={Colors.black} />
-          <ModeSelectScreen onModeSelected={handleModeSelected} />
-        </NavigationContainer>
+        <StatusBar barStyle="dark-content" backgroundColor={Colors.black} />
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.modeSelectContainer}>
+
+            <Text style={styles.logo}>CapStash</Text>
+            <Text style={styles.modeSelectSubtitle}>WALLET LITE</Text>
+
+            <View style={styles.modeSelectDivider} />
+
+            <Text style={styles.modeSelectPrompt}>SELECT NODE MODE</Text>
+
+            {/* Local node button */}
+            <TouchableOpacity
+              style={styles.modeBtn}
+              onPress={() => handleModeSelected(MODE_LOCAL)}
+            >
+              <Text style={styles.modeBtnTitle}>⬡  LOCAL NODE</Text>
+              <Text style={styles.modeBtnDesc}>
+                Runs a full CapStash node on this device.{'\n'}
+                Self-sovereign. No trust required.
+              </Text>
+            </TouchableOpacity>
+
+            {/* Remote node button */}
+            <TouchableOpacity
+              style={[styles.modeBtn, styles.modeBtnDim]}
+              onPress={() => handleModeSelected(MODE_REMOTE)}
+            >
+              <Text style={[styles.modeBtnTitle, { color: Colors.amber }]}>∿  REMOTE NODE</Text>
+              <Text style={styles.modeBtnDesc}>
+                Connect to a community or personal node.{'\n'}
+                Lightweight. Requires Tailscale or reachable RPC.
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+        </SafeAreaView>
       </SafeAreaProvider>
     );
   }
+// ── Wallet choice — new or restore ───────────────────
+  if (seedPhase === 'choice') {
+    return (
+      <SafeAreaProvider>
+        <StatusBar barStyle="dark-content" backgroundColor={Colors.black} />
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.modeSelectContainer}>
 
+            <Text style={styles.logo}>CapStash</Text>
+            <Text style={styles.modeSelectSubtitle}>LOCAL WALLET</Text>
+            <View style={styles.modeSelectDivider} />
+            <Text style={styles.modeSelectPrompt}>WALLET SETUP</Text>
+
+            <TouchableOpacity
+              style={styles.modeBtn}
+              onPress={() => setSeedPhase('generate')}
+            >
+              <Text style={styles.modeBtnTitle}>⬡  NEW WALLET</Text>
+              <Text style={styles.modeBtnDesc}>
+                Generate a new seed phrase.{'\n'}
+                First time using CapStash on this device.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modeBtn, styles.modeBtnDim]}
+              onPress={() => setSeedPhase('restore')}
+            >
+              <Text style={[styles.modeBtnTitle, { color: Colors.amber }]}>∿  RESTORE WALLET</Text>
+              <Text style={styles.modeBtnDesc}>
+                Already have a seed phrase?{'\n'}
+                Restore from an existing CapStash wallet.
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+  // ── Seed phrase flow ──────────────────────────────────
   if (seedPhase === 'generate') {
     return (
       <SafeAreaProvider>
@@ -288,7 +355,7 @@ export default function App() {
           mnemonic={pendingSeed}
           onBack={() => setSeedPhase('generate')}
           onVerified={async () => {
-            await persistMode(MODE_WANDERER);
+            await persistMode(MODE_LOCAL);
             setSeedPhase(null);
           }}
         />
@@ -301,10 +368,10 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar barStyle="dark-content" backgroundColor={Colors.black} />
         <SeedRestoreScreen
-          onBack={() => setSeedPhase('generate')}
+          onBack={() => setSeedPhase('choice')}
           onSeedRestored={async (mnemonic) => {
             setPendingSeed(mnemonic);
-            await persistMode(MODE_WANDERER);
+            await persistMode(MODE_LOCAL);
             setSeedPhase(null);
           }}
         />
@@ -312,14 +379,14 @@ export default function App() {
     );
   }
 
-  // ── Main app — loads immediately regardless of mode ────
+  // ── Main app ──────────────────────────────────────────
   return (
     <SafeAreaProvider>
       <NavigationContainer>
         <StatusBar barStyle="dark-content" backgroundColor={Colors.black} />
         <SafeAreaView style={styles.container} edges={['top']}>
 
-          {/* ── App Header ── */}
+          {/* ── Header ── */}
           <View style={styles.header}>
             <View style={styles.logoBlock}>
               <Text style={styles.logo}>CapStash</Text>
@@ -329,13 +396,9 @@ export default function App() {
                 style={styles.statusRow}
                 onPress={() => setShowSetup(true)}
               >
-                {/* ☢ icon color = RED/AMBER/GREEN based on node sync status */}
                 <Text style={[styles.statusIcon, { color: statusColor }]}>☢</Text>
-                <Text style={[
-                  styles.modeText,
-                  { color: statusColor, textShadowColor: statusColor },
-                ]}>
-                  {appMode || 'DRIFTER'}
+                <Text style={[styles.modeText, { color: statusColor, textShadowColor: statusColor }]}>
+                  {appMode || 'REMOTE'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.manualBtn} onPress={() => setShowManual(true)}>
@@ -363,7 +426,7 @@ export default function App() {
             </Animated.Text>
           </View>
 
-          {/* ── Tab Navigation ── */}
+          {/* ── Tabs ── */}
           {!configReady ? (
             <View style={styles.initContainer}>
               <Text style={styles.initText}>INITIALIZING...</Text>
@@ -377,13 +440,7 @@ export default function App() {
                 tabBarInactiveTintColor: Colors.greenDim,
                 tabBarLabelStyle:        styles.tabLabel,
                 tabBarIcon: ({ focused }) => {
-                  const icons = {
-                    VAULT:    '⬡',
-                    'P.B.G.': '⚒',
-                    'B.D.T.': '⛓',
-                    SIGNAL:   '∿',
-                    SURVIVOR: '↯',
-                  };
+                  const icons = { VAULT: '⬡', SIGNAL: '∿' };
                   return (
                     <Text style={{
                       fontSize: focused ? 32 : 22,
@@ -402,23 +459,12 @@ export default function App() {
                     nodeConfig={nodeConfig}
                     isOnline={isOnline}
                     appMode={appMode}
-                    walletReady={walletReady || appMode === MODE_DRIFTER}
+                    walletReady={walletReady || appMode === MODE_REMOTE}
                     wandererAddress={walletAddress}
                   />
                 )}
               </Tab.Screen>
-              <Tab.Screen name="P.B.G.">
-                {() => (
-                  <MinerScreen
-                    nodeConfig={nodeConfig}
-                    isOnline={isOnline}
-                    appMode={appMode}
-                  />
-                )}
-              </Tab.Screen>
-              <Tab.Screen name="B.D.T.">
-                {() => <ExplorerScreen nodeConfig={nodeConfig} />}
-              </Tab.Screen>
+
               <Tab.Screen name="SIGNAL">
                 {() => (
                   <NetworkScreen
@@ -426,9 +472,6 @@ export default function App() {
                     appMode={appMode}
                   />
                 )}
-              </Tab.Screen>
-              <Tab.Screen name="SURVIVOR">
-                {() => <SoloScreen nodeConfig={nodeConfig} />}
               </Tab.Screen>
             </Tab.Navigator>
           )}
@@ -458,6 +501,60 @@ const styles = StyleSheet.create({
   initContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.black },
   initText:      { fontFamily: 'ShareTechMono', fontSize: 14, color: Colors.green, letterSpacing: 3 },
 
+  // ── Mode select screen ──
+  modeSelectContainer: {
+    flex:            1,
+    backgroundColor: Colors.black,
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingHorizontal: 30,
+  },
+  modeSelectSubtitle: {
+    fontFamily:    'ShareTechMono',
+    fontSize:      13,
+    color:         Colors.greenDim,
+    letterSpacing: 6,
+    marginTop:     -8,
+    marginBottom:  20,
+  },
+  modeSelectDivider: {
+    width:           '100%',
+    height:          1,
+    backgroundColor: Colors.borderDim,
+    marginBottom:    30,
+  },
+  modeSelectPrompt: {
+    fontFamily:    'ShareTechMono',
+    fontSize:      11,
+    color:         Colors.greenDim,
+    letterSpacing: 4,
+    marginBottom:  20,
+  },
+  modeBtn: {
+    width:           '100%',
+    borderWidth:     1,
+    borderColor:     Colors.green,
+    padding:         18,
+    marginBottom:    16,
+    backgroundColor: '#050f05',
+  },
+  modeBtnDim: {
+    borderColor: Colors.amber,
+  },
+  modeBtnTitle: {
+    fontFamily:    'ShareTechMono',
+    fontSize:      15,
+    color:         Colors.green,
+    letterSpacing: 2,
+    marginBottom:  8,
+  },
+  modeBtnDesc: {
+    fontFamily: 'ShareTechMono',
+    fontSize:   11,
+    color:      Colors.greenDim,
+    lineHeight: 18,
+  },
+
   // ── Header ──
   header: {
     flexDirection:     'row',
@@ -470,7 +567,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderDim,
     backgroundColor:   Colors.surfaceLight,
   },
-  logoBlock:   { flexDirection: 'column' },
+  logoBlock: { flexDirection: 'column' },
   logo: {
     fontFamily:       'ShareTechMono',
     fontSize:         38,

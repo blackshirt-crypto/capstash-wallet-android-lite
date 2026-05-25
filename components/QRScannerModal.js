@@ -3,7 +3,7 @@
  * Reusable QR scanner modal — react-native-vision-camera v4
  *
  * Used by:
- *   MinerScreen  — import mining address from Qt wallet QR
+
  *   WalletScreen — scan recipient address when sending CAPS
  *
  * Props:

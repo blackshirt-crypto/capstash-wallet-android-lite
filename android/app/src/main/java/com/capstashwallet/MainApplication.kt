@@ -1,6 +1,6 @@
-package com.capstashwallet
+package com.capstashwallet.lite
+import com.capstashwallet.lite.NodePackage
 import android.app.Application
-import com.capstashwallet.MinerPackage
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -17,7 +17,6 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> {
   val packages = PackageList(this).packages
   packages.add(NodePackage())
-  packages.add(MinerPackage())
   return packages
 }
         override fun getJSMainModuleName(): String = "index"
