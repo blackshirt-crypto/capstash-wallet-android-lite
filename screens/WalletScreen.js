@@ -25,6 +25,23 @@ import Typography from '../theme/typography';
 const TX_INITIAL = 5;
 const TX_FULL    = 20;
 
+// ── Fee presets (scrap/vB) ───────────────────────────────
+// CapStash's smallest unit is the SCRAP. 1 CAP = 100,000,000 SCRAPS.
+// Fee rate is expressed in scrap per virtual byte (scrap/vB).
+// Node minimum: 1 scrap/vB. Qt wallet GUI displays the equivalent in CAP/kvB.
+//   1 scrap/vB   = 0.00001 CAP/kvB  (Qt default)
+//   10 scrap/vB  = 0.0001 CAP/kvB
+//   100 scrap/vB = 0.001 CAP/kvB
+const FEE_PRESETS = {
+  ECONOMY:  { rate: 1,    label: 'ECONOMY',  desc: 'SLOW · MIN FEE'  },
+  NORMAL:   { rate: 10,   label: 'NORMAL',   desc: 'STANDARD'        },
+  PRIORITY: { rate: 100,  label: 'PRIORITY', desc: 'FAST · HIGH FEE' },
+  CUSTOM:   { rate: null, label: 'CUSTOM',   desc: 'USER DEFINED'    },
+};
+
+// ── Unit constants ───────────────────────────────────────
+const SCRAP_PER_CAP = 100000000; // 1 CAP = 100,000,000 SCRAPS
+
 export default function WalletScreen({ nodeConfig, isOnline, appMode, walletReady, wandererAddress }) {
   const isWanderer = appMode === MODE_LOCAL;
 
@@ -47,6 +64,8 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
   const [sendAmount,   setSendAmount]   = useState('');
   const [sendStep,     setSendStep]     = useState('address');
   const [sending,      setSending]      = useState(false);
+  const [feePreset,    setFeePreset]    = useState('NORMAL'); // ECONOMY | NORMAL | PRIORITY | CUSTOM
+  const [customFee,    setCustomFee]    = useState('');       // user's custom scrap/vB input
 
   // ── Camera / scan ───────────────────────────────────────
   const [showScan,  setShowScan]  = useState(false);
@@ -91,7 +110,6 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
         setMyAddress(addresses[0].address);
         setAllAddresses(addresses);
       } else if (isWanderer && wandererAddress) {
-        // Wanderer wallet exists but no received txs yet — use the known address
         setMyAddress(wandererAddress);
         setAllAddresses([{ address: wandererAddress, label: 'LOCAL' }]);
       }
@@ -128,11 +146,29 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
     setShowScan(true);
   };
 
+  // ── Helper: get the active fee rate based on preset ─────
+  const getActiveFeeRate = () => {
+    if (feePreset === 'CUSTOM') {
+      const parsed = parseFloat(customFee);
+      return (!isNaN(parsed) && parsed > 0) ? parsed : null;
+    }
+    return FEE_PRESETS[feePreset].rate;
+  };
+
+  // Convert scrap/vB → CAP/kvB for Qt wallet cross-reference
+  // 1 scrap/vB = 0.00001 CAP/kvB
+  const scrapVbToCapKvb = (scrapVb) => {
+    if (scrapVb === null || scrapVb === undefined || isNaN(scrapVb)) return null;
+    return (scrapVb * 0.00001).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+  };
+
   // ── Send handlers ───────────────────────────────────────
   const handleOpenSend = () => {
     setSendAddress('');
     setSendAmount('');
     setSendStep('address');
+    setFeePreset('NORMAL');
+    setCustomFee('');
     setShowSend(true);
   };
 
@@ -148,6 +184,14 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
       Alert.alert('Invalid Amount', 'Please enter a valid amount.');
       return;
     }
+    // Validate custom fee if CUSTOM selected
+    if (feePreset === 'CUSTOM') {
+      const fee = parseFloat(customFee);
+      if (isNaN(fee) || fee <= 0) {
+        Alert.alert('Invalid Fee', 'Please enter a valid custom fee rate (scrap/vB).');
+        return;
+      }
+    }
     setSendStep('confirm');
   };
 
@@ -155,7 +199,8 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
     setSending(true);
     try {
       const cleanAddr = sendAddress.startsWith('CAP1') ? sendAddress.toLowerCase() : sendAddress;
-      const result = await sendToAddress(nodeConfig, cleanAddr, parseFloat(sendAmount));
+      const feeRate   = getActiveFeeRate();
+      const result    = await sendToAddress(nodeConfig, cleanAddr, parseFloat(sendAmount), feeRate);
       console.log('SEND RESULT:', result);
       Alert.alert('✓ Sent', `${sendAmount} CAP sent to ${sendAddress.slice(0,10)}...`);
       setShowSend(false);
@@ -193,9 +238,6 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
 
   const displayedTxs = showAllTx ? txs : txs.slice(0, TX_INITIAL);
 
-  // ── Not ready guard — should not normally be seen ───────
-  // (App.js shows WandererInitScreen before tabs render in Wanderer)
-  // This is a defensive fallback only.
   if (!walletReady) {
     return (
       <View style={styles.notReadyContainer}>
@@ -203,6 +245,15 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
       </View>
     );
   }
+
+  // Display value for fee on confirm screen
+  const confirmFeeDisplay = () => {
+    const rate = getActiveFeeRate();
+    if (feePreset === 'CUSTOM') {
+      return `CUSTOM · ${rate} scrap/vB`;
+    }
+    return `${FEE_PRESETS[feePreset].label} · ${rate} scrap/vB`;
+  };
 
   return (
     <>
@@ -213,14 +264,12 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />
         }
       >
-        {/* ── Mode badge (Wanderer only) ── */}
         {isWanderer && (
           <View style={styles.modeBadge}>
             <Text style={styles.modeBadgeText}>◈ LOCAL WALLET · LOCAL MODE</Text>
           </View>
         )}
 
-        {/* ── Balance card ── */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceLabelRow}>
             <Text style={styles.balanceLabel}>WASTELAND ERA BALANCE</Text>
@@ -230,7 +279,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
           </View>
 
           <Text style={styles.balanceAmount}>
-            {balanceHidden ? '●●●.●●●●●●●' : (balance !== null ? balance.toFixed(7) : '-.-------')}
+            {balanceHidden ? '●●●.●●●●●●●●' : (balance !== null ? balance.toFixed(8) : '-.--------')}
           </Text>
           <Text style={styles.balanceCurrency}>CAPS</Text>
 
@@ -274,7 +323,13 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
           </View>
         </View>
 
-        {/* ── Transactions ── */}
+        {/* ── SCRAP unit education ── */}
+        <View style={styles.unitEduCard}>
+          <Text style={styles.unitEduTitle}>◈ UNITS</Text>
+          <Text style={styles.unitEduLine}>1 CAP = 100,000,000 SCRAPS</Text>
+          <Text style={styles.unitEduSub}>network fee min: 1 SCRAP / vByte</Text>
+        </View>
+
         <Text style={styles.sectionHeader}>▸ RECENT TRANSACTIONS</Text>
         {txs.length === 0 && (
           <Text style={styles.emptyText}>
@@ -461,7 +516,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
           )}
 
           {sendStep === 'amount' && (
-            <View style={styles.modalContent}>
+            <ScrollView contentContainerStyle={styles.modalContent}>
               <Text style={styles.sendStepLabel}>ENTER AMOUNT</Text>
 
               <View style={styles.sendToCard}>
@@ -477,7 +532,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
                   style={styles.amountInput}
                   value={sendAmount}
                   onChangeText={setSendAmount}
-                  placeholder="0.0000000"
+                  placeholder="0.00000000"
                   placeholderTextColor={Colors.greenDim}
                   keyboardType="decimal-pad"
                   autoFocus
@@ -486,12 +541,69 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
               </View>
 
               {balance !== null && (
-                <TouchableOpacity onPress={() => setSendAmount(balance.toFixed(7))}>
-                  <Text style={styles.maxBtn}>USE MAX: {balance.toFixed(4)} CAP</Text>
+                <TouchableOpacity onPress={() => setSendAmount(balance.toFixed(8))}>
+                  <Text style={styles.maxBtn}>USE MAX: {balance.toFixed(8)} CAP</Text>
                 </TouchableOpacity>
               )}
 
-              <Text style={styles.feeNote}>NETWORK FEE: ~0.0001 CAP</Text>
+              {/* ── Fee preset selector (4 buttons) ── */}
+              <Text style={styles.feeSelectorLabel}>NETWORK FEE</Text>
+              <View style={styles.feePresetRow}>
+                {Object.keys(FEE_PRESETS).map((key) => {
+                  const preset   = FEE_PRESETS[key];
+                  const selected = feePreset === key;
+                  const rateText = key === 'CUSTOM'
+                    ? '—'
+                    : `${preset.rate} scrap/vB`;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.feePresetBtn, selected && styles.feePresetBtnSelected]}
+                      onPress={() => setFeePreset(key)}
+                    >
+                      <Text style={[styles.feePresetLabel, selected && styles.feePresetLabelSelected]}>
+                        {preset.label}
+                      </Text>
+                      <Text style={[styles.feePresetRate, selected && styles.feePresetRateSelected]}>
+                        {rateText}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* ── Custom fee input (only when CUSTOM selected) ── */}
+              {feePreset === 'CUSTOM' && (
+                <View style={styles.customFeeCard}>
+                  <Text style={styles.inputLabel}>CUSTOM FEE RATE</Text>
+                  <View style={styles.customFeeRow}>
+                    <TextInput
+                      style={styles.customFeeInput}
+                      value={customFee}
+                      onChangeText={setCustomFee}
+                      placeholder="e.g. 1 (Qt wallet default)"
+                      placeholderTextColor={Colors.greenDim}
+                      keyboardType="decimal-pad"
+                    />
+                    <Text style={styles.customFeeUnit}>scrap/vB</Text>
+                  </View>
+                  <Text style={styles.customFeeHint}>
+                    MIN: 1 scrap/vB
+                  </Text>
+                  <Text style={styles.customFeeHint}>
+                    1 SCRAP = 0.00000001 CAP · 1 CAP = 100,000,000 SCRAPS
+                  </Text>
+                  <Text style={styles.customFeeHint}>
+                    QT WALLET SHOWS: {customFee && parseFloat(customFee) > 0
+                      ? `${scrapVbToCapKvb(parseFloat(customFee))} CAP/kvB`
+                      : '0.00001 CAP/kvB at 1 scrap/vB'}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={styles.feePresetDesc}>
+                {FEE_PRESETS[feePreset].desc}
+              </Text>
 
               <TouchableOpacity
                 style={[styles.confirmBtn, (!sendAmount || parseFloat(sendAmount) <= 0) && styles.confirmBtnDisabled]}
@@ -500,7 +612,7 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
               >
                 <Text style={styles.confirmBtnText}>REVIEW TRANSACTION →</Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           )}
 
           {sendStep === 'confirm' && (
@@ -515,17 +627,13 @@ export default function WalletScreen({ nodeConfig, isOnline, appMode, walletRead
                 <View style={styles.confirmRow}>
                   <Text style={styles.confirmLabel}>AMOUNT</Text>
                   <Text style={[styles.confirmValue, { color: Colors.amber }]}>
-                    {parseFloat(sendAmount).toFixed(7)} CAP
+                    {parseFloat(sendAmount).toFixed(8)} CAP
                   </Text>
                 </View>
-                <View style={styles.confirmRow}>
-                  <Text style={styles.confirmLabel}>FEE</Text>
-                  <Text style={styles.confirmValue}>~0.0001 CAP</Text>
-                </View>
                 <View style={[styles.confirmRow, { borderBottomWidth: 0 }]}>
-                  <Text style={styles.confirmLabel}>TOTAL</Text>
-                  <Text style={[styles.confirmValue, { color: Colors.red }]}>
-                    {(parseFloat(sendAmount) + 0.0001).toFixed(7)} CAP
+                  <Text style={styles.confirmLabel}>FEE RATE</Text>
+                  <Text style={[styles.confirmValue, { color: Colors.amber }]}>
+                    {confirmFeeDisplay()}
                   </Text>
                 </View>
               </View>
@@ -598,7 +706,6 @@ const styles = StyleSheet.create({
     color: Colors.greenDim, letterSpacing: 3,
   },
 
-  // Mode badge
   modeBadge: {
     borderWidth: 1, borderColor: Colors.amberDim,
     paddingVertical: 6, paddingHorizontal: 10,
@@ -610,7 +717,6 @@ const styles = StyleSheet.create({
     color: Colors.amber, letterSpacing: 2,
   },
 
-  // Balance card
   balanceCard: {
     backgroundColor: Colors.surfaceLight,
     borderBottomWidth: 1, borderBottomColor: Colors.borderDim,
@@ -691,7 +797,23 @@ const styles = StyleSheet.create({
     color: Colors.green, letterSpacing: 2,
   },
 
-  // Transactions
+  unitEduCard: {
+    borderWidth: 1, borderColor: Colors.borderDim,
+    backgroundColor: Colors.surface,
+    padding: 10, marginBottom: 14,
+  },
+  unitEduTitle: {
+    fontFamily: 'ShareTechMono', fontSize: 10,
+    color: Colors.amber, letterSpacing: 2, marginBottom: 4,
+  },
+  unitEduLine: {
+    fontFamily: 'ShareTechMono', fontSize: 13,
+    color: Colors.green, letterSpacing: 1,
+  },
+  unitEduSub: {
+    fontFamily: 'ShareTechMono', fontSize: 10,
+    color: Colors.greenDim, letterSpacing: 1, marginTop: 3, opacity: 0.8,
+  },
   sectionHeader: {
     fontFamily: 'ShareTechMono', fontSize: 13,
     color: Colors.greenDim, marginBottom: 10, paddingBottom: 5,
@@ -731,7 +853,6 @@ const styles = StyleSheet.create({
     color: Colors.greenDim, letterSpacing: 2,
   },
 
-  // Modal shared
   modalContainer: { flex: 1, backgroundColor: Colors.black },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -749,7 +870,6 @@ const styles = StyleSheet.create({
   },
   modalContent: { padding: 20 },
 
-  // Receive modal
   receiveHint: {
     fontFamily: 'ShareTechMono', fontSize: 12,
     color: Colors.greenDim, letterSpacing: 2, marginBottom: 24, textAlign: 'center',
@@ -792,7 +912,6 @@ const styles = StyleSheet.create({
   addrRowLabel: { fontFamily: 'ShareTechMono', fontSize: 11, color: Colors.greenDim, letterSpacing: 1 },
   addrRowAddr:  { fontFamily: 'ShareTechMono', fontSize: 11, color: Colors.green },
 
-  // Send modal
   sendStepLabel: {
     fontFamily: 'ShareTechMono', fontSize: 12,
     color: Colors.greenDim, letterSpacing: 3, marginBottom: 20,
@@ -865,12 +984,70 @@ const styles = StyleSheet.create({
   },
   maxBtn: {
     fontFamily: 'ShareTechMono', fontSize: 11,
-    color: Colors.amber, letterSpacing: 1, marginBottom: 8,
+    color: Colors.amber, letterSpacing: 1, marginBottom: 16,
   },
-  feeNote: {
+
+  // ── Fee preset selector ──
+  feeSelectorLabel: {
     fontFamily: 'ShareTechMono', fontSize: 11,
-    color: Colors.greenDim, letterSpacing: 1, marginBottom: 24,
+    color: Colors.greenDim, letterSpacing: 2, marginBottom: 8,
   },
+  feePresetRow: {
+    flexDirection: 'row', gap: 4, marginBottom: 6,
+  },
+  feePresetBtn: {
+    flex: 1, paddingVertical: 10, paddingHorizontal: 2,
+    borderWidth: 1, borderColor: Colors.borderDim,
+    backgroundColor: Colors.surface, alignItems: 'center',
+  },
+  feePresetBtnSelected: {
+    borderColor: Colors.green,
+    backgroundColor: Colors.surfaceLight,
+  },
+  feePresetLabel: {
+    fontFamily: 'ShareTechMono', fontSize: 10,
+    color: Colors.greenDim, letterSpacing: 1,
+  },
+  feePresetLabelSelected: {
+    color: Colors.green,
+  },
+  feePresetRate: {
+    fontFamily: 'ShareTechMono', fontSize: 9,
+    color: Colors.greenDim, marginTop: 2, opacity: 0.7,
+  },
+  feePresetRateSelected: {
+    color: Colors.green, opacity: 1,
+  },
+  feePresetDesc: {
+    fontFamily: 'ShareTechMono', fontSize: 10,
+    color: Colors.amber, letterSpacing: 1, marginBottom: 20,
+    textAlign: 'center', opacity: 0.7,
+  },
+
+  // ── Custom fee input ──
+  customFeeCard: {
+    borderWidth: 1, borderColor: Colors.amber,
+    backgroundColor: Colors.surface, padding: 12, marginTop: 6, marginBottom: 6,
+  },
+  customFeeRow: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  customFeeInput: {
+    flex: 1,
+    backgroundColor: Colors.black, borderWidth: 1, borderColor: Colors.borderDim,
+    color: Colors.green, fontFamily: 'ShareTechMono', fontSize: 16,
+    padding: 10, letterSpacing: 1,
+  },
+  customFeeUnit: {
+    fontFamily: 'ShareTechMono', fontSize: 12,
+    color: Colors.amber, letterSpacing: 1, marginLeft: 10,
+  },
+  customFeeHint: {
+    fontFamily: 'ShareTechMono', fontSize: 9,
+    color: Colors.greenDim, letterSpacing: 1, marginTop: 8,
+    opacity: 0.8,
+  },
+
   confirmBtn: {
     borderWidth: 1, borderColor: Colors.green,
     paddingVertical: 16, alignItems: 'center', marginBottom: 12,
@@ -890,7 +1067,7 @@ const styles = StyleSheet.create({
   },
   confirmLabel: {
     fontFamily: 'ShareTechMono', fontSize: 11,
-    color: Colors.greenDim, letterSpacing: 2, width: 70,
+    color: Colors.greenDim, letterSpacing: 2, width: 80,
   },
   confirmValue: {
     fontFamily: 'ShareTechMono', fontSize: 12,
@@ -902,7 +1079,6 @@ const styles = StyleSheet.create({
     color: Colors.greenDim, letterSpacing: 2,
   },
 
-  // Scanner
   scannerContainer: {
     flex: 1, backgroundColor: Colors.black,
     alignItems: 'center', paddingTop: 60,

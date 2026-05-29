@@ -146,14 +146,6 @@ function _recordFailure() {
 // CORE RPC CALL
 // ══════════════════════════════════════════════════════════
 
-/**
- * Core RPC call.
- * @param {object|null} nodeConfig  — pass null to use cached config
- * @param {string}      method
- * @param {array}       params
- * @param {string|null} walletName  — if set, appends /wallet/<name> to URL
- *                                    use WANDERER_WALLET_NAME in Wanderer mode
- */
 async function rpcCall(nodeConfig, method, params = [], walletName = null) {
   if (USE_MOCK) return getMockResponse(method, params);
 
@@ -162,7 +154,6 @@ async function rpcCall(nodeConfig, method, params = [], walletName = null) {
 
   const { ip, port = '8332', rpcuser, rpcpassword } = cfg;
 
-  // Append /wallet/<name> for named wallet calls (Wanderer mode)
   const walletPath = walletName ? `/wallet/${walletName}` : '';
   const url = `http://${ip}:${port}${walletPath}`;
 
@@ -198,14 +189,11 @@ async function rpcCall(nodeConfig, method, params = [], walletName = null) {
     return json.result;
   } catch (err) {
     _recordFailure();
+    console.log('[rpcCall ERROR]', method, '→', err.message);
     throw err;
   }
 }
 
-/**
- * Convenience wrapper — calls rpcCall with WANDERER_WALLET_NAME baked in.
- * Use for any wallet-scoped call in Wanderer mode.
- */
 export async function rpcWalletCall(nodeConfig, method, params = []) {
   return rpcCall(nodeConfig, method, params, WANDERER_WALLET_NAME);
 }
@@ -224,7 +212,7 @@ export async function testConnection(config) {
 }
 
 // ══════════════════════════════════════════════════════════
-// PUBLIC RPC METHODS — Node-level (no wallet scope)
+// PUBLIC RPC METHODS — Node-level
 // ══════════════════════════════════════════════════════════
 
 export async function getBlockCount(nodeConfig = null) {
@@ -233,74 +221,28 @@ export async function getBlockCount(nodeConfig = null) {
   return height;
 }
 
-export async function getMiningInfo(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getmininginfo');
-}
+export async function getMiningInfo(nodeConfig = null)       { return rpcCall(nodeConfig, 'getmininginfo'); }
+export async function getBlockHash(nodeConfig = null, h)     { return rpcCall(nodeConfig, 'getblockhash', [h]); }
+export async function getBlock(nodeConfig = null, h, v = 1)  { return rpcCall(nodeConfig, 'getblock', [h, v]); }
+export async function getBlockTemplate(nodeConfig = null)    { return rpcCall(nodeConfig, 'getblocktemplate', [{ rules: ['segwit'] }]); }
+export async function submitBlock(nodeConfig = null, hex)    { return rpcCall(nodeConfig, 'submitblock', [hex]); }
+export async function getBlockchainInfo(nodeConfig = null)   { return rpcCall(nodeConfig, 'getblockchaininfo'); }
+export async function getNetworkInfo(nodeConfig = null)      { return rpcCall(nodeConfig, 'getnetworkinfo'); }
+export async function getPeerInfo(nodeConfig = null)         { return rpcCall(nodeConfig, 'getpeerinfo'); }
+export async function getRawMempool(nodeConfig = null)       { return rpcCall(nodeConfig, 'getrawmempool'); }
+export async function getMempoolInfo(nodeConfig = null)      { return rpcCall(nodeConfig, 'getmempoolinfo'); }
+export async function getDifficulty(nodeConfig = null)       { return rpcCall(nodeConfig, 'getdifficulty'); }
+export async function getNetworkHashPs(nodeConfig = null)    { return rpcCall(nodeConfig, 'getnetworkhashps'); }
 
-export async function getBlockHash(nodeConfig = null, height) {
-  return rpcCall(nodeConfig, 'getblockhash', [height]);
-}
-
-export async function getBlock(nodeConfig = null, hash, verbosity = 1) {
-  return rpcCall(nodeConfig, 'getblock', [hash, verbosity]);
-}
-
-export async function getBlockTemplate(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getblocktemplate', [{ rules: ['segwit'] }]);
-}
-
-export async function submitBlock(nodeConfig = null, hexdata) {
-  return rpcCall(nodeConfig, 'submitblock', [hexdata]);
-}
-
-export async function getBlockchainInfo(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getblockchaininfo');
-}
-
-export async function getNetworkInfo(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getnetworkinfo');
-}
-
-export async function getPeerInfo(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getpeerinfo');
-}
-
-export async function getRawMempool(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getrawmempool');
-}
-
-export async function getMempoolInfo(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getmempoolinfo');
-}
-
-export async function getDifficulty(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getdifficulty');
-}
-
-export async function getNetworkHashPs(nodeConfig = null) {
-  return rpcCall(nodeConfig, 'getnetworkhashps');
-}
-
-// ── Wallet management (node-level, no wallet scope) ───────
-
-/**
- * List all wallets loaded on the node.
- * Returns string[] of wallet names, e.g. ["", "wanderer"]
- */
 export async function listWallets(nodeConfig = null) {
   return rpcCall(nodeConfig, 'listwallets');
 }
 
-/**
- * Create a named wallet. Safe to call if already exists — catches the error.
- * Returns true on success or already-exists, false on real failure.
- */
 export async function createWallet(nodeConfig = null, walletName) {
   try {
-    await rpcCall(nodeConfig, 'createwallet', [walletName, false, false, '', false, false, false]); // legacy wallet — required for importprivkey
+    await rpcCall(nodeConfig, 'createwallet', [walletName, false, false, '', false, false, false]);
     return true;
   } catch (e) {
-    // "Wallet wanderer already exists" — not a real error
     if (e.message?.toLowerCase().includes('already exist')) return true;
     console.warn('[RPC] createWallet failed:', e.message);
     return false;
@@ -309,8 +251,6 @@ export async function createWallet(nodeConfig = null, walletName) {
 
 // ══════════════════════════════════════════════════════════
 // PUBLIC RPC METHODS — Wallet-scoped
-// These automatically use the right wallet path based on mode.
-// Pass wandererMode: true in nodeConfig to use named wallet scope.
 // ══════════════════════════════════════════════════════════
 
 function _walletName(nodeConfig) {
@@ -337,20 +277,33 @@ export async function getWalletAddresses(nodeConfig = null) {
   return rpcCall(nodeConfig, 'listreceivedbyaddress', [0, true], _walletName(nodeConfig));
 }
 
-export async function listReceivedByAddress(nodeConfig = null, minConf = 0, includeEmpty = true) {
-  return rpcCall(nodeConfig, 'listreceivedbyaddress', [minConf, includeEmpty], _walletName(nodeConfig));
+export async function sendToAddress(nodeConfig = null, address, amount, feeRate = null) {
+  // CapStash sendtoaddress positional params:
+  //   address, amount, comment, comment_to, subtractfeefromamount,
+  //   replaceable, conf_target, estimate_mode, avoid_reuse, fee_rate
+  //
+  // To pass fee_rate WITHOUT conf_target, conf_target must be literal null
+  // (not 0, not omitted) — matches example in node help text:
+  //   sendtoaddress "addr" 0.1 "" "" false true null "unset" null 1.1
+  const params = [address, amount];
+  if (feeRate !== null && feeRate !== undefined) {
+    params.push('');        // comment
+    params.push('');        // comment_to
+    params.push(false);     // subtractfeefromamount
+    params.push(true);      // replaceable (RBF on)
+    params.push(null);      // conf_target — null = not specified
+    params.push('unset');   // estimate_mode
+    params.push(null);      // avoid_reuse — null = use default
+    params.push(feeRate);   // fee_rate in CAP/kvB (legacy convention this fork uses)
+  }
+  console.log('[sendToAddress] params:', JSON.stringify(params));
+  return rpcCall(nodeConfig, 'sendtoaddress', params, _walletName(nodeConfig));
 }
 
-export async function sendToAddress(nodeConfig = null, address, amount) {
-  return rpcCall(nodeConfig, 'sendtoaddress', [address, amount], _walletName(nodeConfig));
-}
-
-// Import a WIF private key into the wanderer wallet
 export async function importPrivKey(nodeConfig = null, wif, label = '', rescan = false) {
   return rpcWalletCall(nodeConfig, 'importprivkey', [wif, label, rescan]);
 }
 
-// Dump the private key for a given address (used for backup/verify)
 export async function dumpPrivKey(nodeConfig = null, address) {
   return rpcWalletCall(nodeConfig, 'dumpprivkey', [address]);
 }
