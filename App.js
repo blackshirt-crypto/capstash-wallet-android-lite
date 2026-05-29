@@ -1,4 +1,4 @@
-// App.js v1.0 — CapStash Wallet Lite
+// App.js v4.20.69 — CapStash Wallet Lite
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, Animated,
