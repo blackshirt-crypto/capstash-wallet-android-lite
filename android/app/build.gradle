@@ -31,10 +31,17 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('capstash-release.keystore')
-            storePassword 'Pocono96'
-            keyAlias 'capstash'
-            keyPassword 'Pocono96'
+            // Signing secrets live in ~/.gradle/gradle.properties (never commit them):
+            //   CAPSTASH_RELEASE_STORE_FILE=capstash-release.keystore
+            //   CAPSTASH_RELEASE_STORE_PASSWORD=...
+            //   CAPSTASH_RELEASE_KEY_ALIAS=capstash
+            //   CAPSTASH_RELEASE_KEY_PASSWORD=...
+            if (project.hasProperty('CAPSTASH_RELEASE_STORE_PASSWORD')) {
+                storeFile file(project.findProperty('CAPSTASH_RELEASE_STORE_FILE') ?: 'capstash-release.keystore')
+                storePassword CAPSTASH_RELEASE_STORE_PASSWORD
+                keyAlias project.findProperty('CAPSTASH_RELEASE_KEY_ALIAS') ?: 'capstash'
+                keyPassword CAPSTASH_RELEASE_KEY_PASSWORD
+            }
         }
     }
 

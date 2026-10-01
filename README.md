@@ -105,7 +105,7 @@ APK output: `android/app/build/outputs/apk/release/app-release.apk`
 ## Related Projects
 
 - [CapStash-Core](https://github.com/CapStash/CapStash-Core) — the full node daemon
-- [capstash-miner-android](https://github.com/scratcher14/capstash-miner-android) — standalone Android miner
+- [capstash-miner-android](https://github.com/blackshirt-crypto/capstash-miner-android) — standalone Android miner
 
 ---
 
