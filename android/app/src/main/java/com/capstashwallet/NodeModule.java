@@ -74,6 +74,17 @@ public class NodeModule extends ReactContextBaseJavaModule {
         }
     }
 
+    // ── Get this install's RPC password (see RpcAuth.java) ─
+    @ReactMethod
+    public void getRpcPassword(Promise promise) {
+        try {
+            promise.resolve(RpcAuth.getPassword(getReactApplicationContext()));
+        } catch (Exception e) {
+            Log.e(TAG, "getRpcPassword failed: " + e.getMessage(), e);
+            promise.reject("RPC_AUTH_FAILED", e.getMessage());
+        }
+    }
+
     // ── Get node data directory path ──────────────────────
     @ReactMethod
     public void getDataDir(Promise promise) {

@@ -72,7 +72,12 @@ public class NodeService extends Service {
             if (!confFile.exists()) {
                 Log.w(TAG, "capstash.conf not found — writing default config");
                 writeDefaultConf(confFile);
+            } else {
+                removeLegacyRpcPassword(confFile);
             }
+
+            // Per-install random password — see RpcAuth.java
+            String rpcPassword = RpcAuth.getPassword(this);
 
             String[] cmd = {
                 "/system/bin/linker64",
@@ -81,8 +86,8 @@ public class NodeService extends Service {
                 "-conf="    + confFile.getAbsolutePath(),
                 "-daemon=0",
                 "-server=1",
-                "-rpcuser=capstash",
-                "-rpcpassword=localnode",
+                "-rpcuser=" + RpcAuth.RPC_USER,
+                "-rpcpassword=" + rpcPassword,
                 "-rpccookiefile=/dev/null",
                 "-rpcport=8332",
                 "-rpcbind=127.0.0.1",
@@ -127,8 +132,8 @@ public class NodeService extends Service {
                 // Send stop command via RPC first for clean shutdown
                 Runtime.getRuntime().exec(new String[]{
                     new File(getFilesDir(), DAEMON_NAME).getAbsolutePath(),
-                    "-rpcuser=capstash",
-                    "-rpcpassword=localnode",
+                    "-rpcuser=" + RpcAuth.RPC_USER,
+                    "-rpcpassword=" + RpcAuth.getPassword(this),
                     "-rpccookiefile=/dev/null",
                     "-rpcport=8332",
                     "stop"
@@ -182,9 +187,8 @@ public class NodeService extends Service {
     private void writeDefaultConf(File confFile) throws IOException {
         String conf =
             "server=1\n" +
-            "rpcuser=capstash\n" +
+            // rpcuser / rpcpassword are passed on the command line from RpcAuth
             "rpccookiefile=/dev/null\n" +
-            "rpcpassword=localnode\n" +
             "rpcport=8332\n" +
             "rpcallowip=127.0.0.1\n" +
             "rpcbind=127.0.0.1\n" +
@@ -200,6 +204,34 @@ public class NodeService extends Service {
             fos.write(conf.getBytes());
         }
         Log.i(TAG, "Default capstash.conf written to: " + confFile.getAbsolutePath());
+    }
+
+    // Older versions wrote rpcuser=capstash / rpcpassword=localnode into the
+    // conf file. Strip them so only the per-install password can log in.
+    private void removeLegacyRpcPassword(File confFile) {
+        try {
+            String conf = new String(
+                java.nio.file.Files.readAllBytes(confFile.toPath()),
+                java.nio.charset.StandardCharsets.UTF_8);
+            StringBuilder cleaned = new StringBuilder();
+            boolean changed = false;
+            for (String line : conf.split("\n", -1)) {
+                String t = line.trim();
+                if (t.startsWith("rpcpassword=") || t.startsWith("rpcuser=") || t.startsWith("rpcauth=")) {
+                    changed = true;
+                    continue;
+                }
+                cleaned.append(line).append("\n");
+            }
+            if (!changed) return;
+            try (FileOutputStream fos = new FileOutputStream(confFile)) {
+                fos.write(cleaned.toString().trim().concat("\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            Log.i(TAG, "Removed legacy RPC credentials from capstash.conf");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not clean capstash.conf: " + e.getMessage());
+        }
     }
 
     // ── Log streaming ──────────────────────────────────────

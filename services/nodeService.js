@@ -58,6 +58,20 @@ export async function isNodeExtracted() {
 }
 
 /**
+ * Get this install's RPC password for the local node.
+ * Generated once per phone by RpcAuth.java and kept in app-private storage.
+ */
+export async function getRpcPassword() {
+  if (!CapStashNode) return null;
+  try {
+    return await CapStashNode.getRpcPassword();
+  } catch (e) {
+    console.error('[nodeService] getRpcPassword failed:', e.message);
+    return null;
+  }
+}
+
+/**
  * Get the node data directory path on device.
  * e.g. /data/user/0/com.capstashwallet/files/capstash
  */

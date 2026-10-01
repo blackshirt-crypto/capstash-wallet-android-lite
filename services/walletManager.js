@@ -14,6 +14,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { listWallets, createWallet, getNewAddress, getWalletAddresses, importPrivKey } from './rpc';
 import { deriveWIFFromMnemonic, deriveLegacyAddressFromMnemonic } from './seedDerivation';
+import { getRpcPassword } from './nodeService';
 
 const LOCAL_WALLET_INIT_KEY    = '@capstash_wanderer_wallet_init';
 const LOCAL_WALLET_ADDRESS_KEY = '@capstash_wanderer_wallet_address';
@@ -26,7 +27,7 @@ const LOCAL_WALLET_ADDRESS_KEY = '@capstash_wanderer_wallet_address';
  * @returns {{ ready: boolean, address: string|null, error: string|null }}
  */
 export async function ensureWandererWallet(nodeConfig, mnemonic = null) {
-  const cfg = nodeConfig || { host: '127.0.0.1', port: 8332, user: 'capstash', pass: 'localnode' };
+  const cfg = nodeConfig || { host: '127.0.0.1', port: 8332, user: 'capstash', pass: await getRpcPassword() };
 
   try {
     // ── Step 1: Check persisted flag ────────────────────────

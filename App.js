@@ -19,7 +19,7 @@ import SetupMenu          from './components/Setupmenu';
 
 import { getBlockCount, getMiningInfo, getBlockchainInfo, loadNodeConfig } from './services/rpc';
 import { ensureWandererWallet } from './services/walletManager';
-import { startNode } from './services/nodeService';
+import { startNode, getRpcPassword } from './services/nodeService';
 import Colors from './theme/colors';
 
 // ── App modes ─────────────────────────────────────────────
@@ -31,7 +31,7 @@ const LOCAL_NODE_CONFIG = {
   host: '127.0.0.1',
   port: 8332,
   user: 'capstash',
-  pass: 'localnode',
+  // No password here — each phone gets its own random one (RpcAuth.java).
 };
 
 // ── AsyncStorage helpers ──────────────────────────────────
@@ -101,12 +101,14 @@ export default function App() {
   // ── Local mode — force nodeConfig to localhost ───────
   useEffect(() => {
     if (appMode !== MODE_LOCAL) return;
-    setNodeConfig({
-      ip:          LOCAL_NODE_CONFIG.host,
-      port:        String(LOCAL_NODE_CONFIG.port),
-      rpcuser:     LOCAL_NODE_CONFIG.user,
-      rpcpassword: LOCAL_NODE_CONFIG.pass,
-      localMode:   true,
+    getRpcPassword().then(rpcPassword => {
+      setNodeConfig({
+        ip:          LOCAL_NODE_CONFIG.host,
+        port:        String(LOCAL_NODE_CONFIG.port),
+        rpcuser:     LOCAL_NODE_CONFIG.user,
+        rpcpassword: rpcPassword,
+        localMode:   true,
+      });
     });
   }, [appMode]);
 
@@ -120,7 +122,7 @@ export default function App() {
       ip:          LOCAL_NODE_CONFIG.host,
       port:        String(LOCAL_NODE_CONFIG.port),
       rpcuser:     LOCAL_NODE_CONFIG.user,
-      rpcpassword: LOCAL_NODE_CONFIG.pass,
+      rpcpassword: null, // filled in below from getRpcPassword()
       localMode:   true,
     };
 
@@ -128,6 +130,8 @@ export default function App() {
 
     startNode()
       .catch(e => console.warn('[App] startNode error:', e.message))
+      .then(() => getRpcPassword())
+      .then(rpcPassword => { localCfg.rpcpassword = rpcPassword; })
       .then(() => new Promise(resolve => setTimeout(resolve, 5000)))
       .then(() => ensureWandererWallet(localCfg, pendingSeed))
       .then(result => {
